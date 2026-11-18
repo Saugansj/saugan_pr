@@ -97,13 +97,18 @@ per-trade claim, plateaus over peaks, 200 trades at mean > 2 cluster-SE to PASS)
 
 ## Known failure modes to check by name
 
-- Clock: offset vs the 100 ms gate, guard heartbeat gap, W32Time service stopped or set to Manual.
-- Power: discharging battery and sleep/resume - the guard cannot correct while suspended; a hard power loss can leave
-  `live.json` true with no process.
-- Ordering: FAK no-match rate, `invalid amounts` rejections, orders arriving past their give-up deadline, and the
-  price cap refusing a real move.
-- Settlements: winners left unredeemed after a run stops, so the claimer is no longer running.
-- Data: stale balance reads, missing markets, `no ask` / `ends too soon` skips being counted as strategy failures.
+Fast index; each has a worked incident in **Scenarios already faced** below.
+
+- **Clock** - measured offset vs the 100 ms gate, guard line within the last minute (a gap means it stopped), w32time
+  Running/Automatic, `w32tm /resync` exit code.
+- **Power** - discharging battery, sleep/resume, and a hard stop leaving `live.json` at `true` with no process.
+- **Ordering** - FAK no-match rate, `invalid amounts`, orders past their give-up deadline, the price cap refusing a
+  real move, and "no venue-valid amount under the share cap" below ~$0.125.
+- **Settlements** - winners left unredeemed after a run stops, because the claimer stopped with it.
+- **Data** - stale balance reads, missing markets, and skip reasons (`no ask`, `ends too soon`) being misread as
+  strategy failures.
+- **Startup** - a slow `nightly.drills keys` crawl (not a failure), a launcher refusing because a loop is already
+  running (correct), and orphaned claimers.
 
 ## Reporting
 
@@ -112,6 +117,96 @@ per-trade claim, plateaus over peaks, 200 trades at mean > 2 cluster-SE to PASS)
 - **Cite the file, command or query** behind every figure, with date/time - IST for the user, UTC in generated reports.
 - **Separate fact, estimate and unknown** explicitly, and list what you could not check.
 - **Flag anything broken you noticed but did not fix** - especially anything that would block trading or lose money.
+
+# Scenarios already faced
+
+Real incidents on this system, with the diagnosis that was correct. When you meet the same symptom, start here rather
+than re-deriving it - and if the symptom differs, say so explicitly.
+
+## Clock and power
+
+- **16 Nov 11:58 - pre-flight refused: binance +696 ms, bybit +731 ms.** The PC clock was 505 ms behind. W32Time said
+  it was synchronising, but it was *slewing* at ~0.25 ms/s with a 1024 s poll and had never caught up. Three NTP
+  sources agreed, so it was not network noise. Fix: step the clock, then cut `MaxPollInterval` to 6 (64 s).
+  *Check:* the offset itself, measured - never the service's status text.
+- **16 Nov 17:32 - pre-flight refused: -368 / -345 ms.** Same clock discipline still stale after the laptop resumed
+  from standby; it free-ran instead of correcting. Fix: step -375 ms and **restart the w32time service** (the restart,
+  not the step, cleared the bad state).
+- **17 Nov 20:22 - the bot's own reading hit +101.7 ms**, past the 100 ms kernel gate, with the guard silent since
+  18:53. Two causes at once: the machine was on battery, and Windows scheduled tasks default to *not running on
+  battery* - so the guard stopped; and the w32time service was **Stopped** with start type Manual, which is why
+  `w32tm /resync` answered `0x80070426`. Fix: clock stepped, service set Automatic and started, guard task settings
+  changed to run on battery and not stop when going on battery. Offset went 101.9 -> 5.6 ms.
+- **18 Nov 11:23 - the guard caught a 397 ms drift** in a single step. Without it the kernel would have latched
+  REDUCING and traded nothing. This is the normal, working case: ~9 steps in a day of 60-70 ms each.
+- **18 Nov 11:28-11:32 - a 3.9 min guard gap** with no steps missed; the machine slept. A suspend pauses the guard, so
+  after a long sleep the clock can be outside 100 ms until the next tick.
+- **Standing rule:** when a clock problem appears, check *all four* - measured offset, guard log line within the last
+  minute, `w32tm /resync` exit code, and the power source - because each has failed independently here.
+
+## Execution and orders
+
+- **17 Nov - 13% of live orders rejected: "invalid amounts, the market buy orders maker amount supports a max accuracy
+  of 2 decimals".** The $1 minimum was met with `ceil(1.0/limit*100)/100` shares, leaving three decimals on the USDC
+  leg (e.g. 9.1 x 0.11 = $1.001). It fired only on cheap entries - the *negative-EV* bucket - so it accidentally saved
+  money while wasting signals. **Fixed 18 Nov** by `trader.router.marketable_buy()`, which searches for a whole-cent
+  USDC amount >= $1, shading the limit a few ticks if needed.
+- **17-18 Nov - 37-60% of orders killed as "no orders found to match with FAK".** Limit is `min(0.85, ask + 0.10)` and
+  the venue answers 965 ms median / 2425 ms p90 after the decision; 15% of orders arrived past their own 2000 ms
+  give-up deadline. Measured over 174 orders: 50% filled, 37% FAK-killed, 13% rejected. **The misses were not
+  adversely selected** (64% win vs 66% for filled), so the lost orders were worth having.
+- **The 0.85 cap is the binding constraint, not a safety net.** Orders that hit the cap missed 58% of the time, and
+  that price band wins ~96%. Every dollar of live profit has come from entries >= 0.55. Raising the cap is a
+  **pre-registered** decision, not a config tweak: at 0.90 you need >90% win rate to break even.
+- **18 Nov 16:42 - new skip: "no venue-valid amount under the share cap".** With 5-8 shares at $0.11 the USDC leg lands
+  on $0.55-$0.88 and $1.00 needs 9.09 shares, above the cap. Mathematically impossible, so the order is refused
+  instead of sent. Any market under ~$0.125 will hit this.
+- **17 Nov 16:41 - a partial fill.** 2.13 of 5 shares filled at 0.85 and settled correctly. Partial fills are normal
+  and must not be read as an error.
+
+## Money, accounting and reconciliation
+
+- **16 Nov 21:20:55 - the run HALTED and sat dead for 40 minutes.** `reconcile_venue()` journals a fill when the
+  *venue* (not the user WebSocket) reports one, but it discarded the returned fills, so the loop never wrote them to the
+  ledger. One second later the comparison saw `position (fills) 765128421314: 5 vs 0` and tripped HALTED, which
+  latches. Evidence: journal had 26 fill entries, ledger had 25. **Fixed**: `recon_fills` on the router and
+  `drain_venue_fills()` in the loop, which records them before the comparison. A regression test fails without it.
+- **17 Nov 14:53 - wallet 37.34 -> 20.00, looking like $20 lost.** The venue's own trade history showed only $2.65
+  spent, and the last position had *won*. It was a **user withdrawal**. Never call this a trading loss without asking.
+- **18 Nov 00:09 - a further $9.80 gap** (ledger said ~$30.00, wallet read $20.20). Verified: all winners redeemed, no
+  open orders, no positions, four consistent reads over a minute - also a withdrawal.
+- **17 Nov 20:41 - a stale balance read.** `ops/live_session.py balance` reported **$29.60** while the truth 30 s later
+  was **$23.37** (two fills had already settled). The `/balance-allowance/update` refresh is best-effort, so a failed
+  refresh silently returns the cached number. Any cash-level check must read twice.
+- **17 Nov - the venue charges `fee_rate_bps = 0`** while the ledger models `0.07 p (1-p)` per share. Every live P&L
+  figure is therefore conservative by ~$0.08 per trade. Do not "correct" the ledger backwards; note the direction.
+- **18 Nov 20:53 - a stopped run left 2 open positions.** They settled after the loop ended, but the claimer had
+  stopped with it, so the payout sat unredeemed until a claimer ran again. Check for this after every stop.
+
+## Data and feeds
+
+- **18 Nov 01:50 - a ~90 s network outage latched REDUCING.** Three trips: `stale feed binance:BTC: 60667 ms` and
+  `polymarket:crypto-fast: 60480 ms`, plus three failed balance reads and a Wi-Fi driver event. The kernel stayed
+  REDUCING until a reset at 02:00, and one paper run stayed blocked until 08:15 - two hours of no entries. The trips
+  were correct; the cost was the latch.
+- **A quiet tape is not a fault.** On 17 Nov the live run had 3 signals in 4 hours and the paper runs saw the *same*
+  three. Replaying the detector on independent Binance 1-second bars reproduced every signal to the second. Check the
+  signal rate against the paper runs and an independent replay before suspecting the bot.
+- **Paper fills were ~4x too good.** On 242 shared signals paper_v4b filled 93% at +1.2c over the ask seen, while live
+  filled 54% at +5.6c. Hence `paper_realism` (18 Nov): paper fills drawn from the real live latency distribution, no
+  give-up at arrival, calibrated FAK kills, and venue amount rules. **Paper P&L before and after this flag is not
+  comparable**, and paper_v4b still uses the old optimistic simulator.
+
+## Operations and startup
+
+- **18 Nov - a launch hung for over 3 minutes on `nightly.drills keys`.** That crawl has no timeout (70 s is normal,
+  1.7 s was seen on a good day). Killing it made the launcher fail safe: claimers stopped, `live.json` back to false,
+  nothing left running. **A slow start is not a failure** - wait, then check for orphaned processes.
+- **16-18 Nov - a launch refused with "already running (pid ...)".** Correct behaviour: a live loop was already up. The
+  launcher is the only thing that should start a run, and it refuses rather than double-starting.
+- **18-19 Nov - power loss risk.** At 25% battery with 45 min of runtime the machine can die mid-session, and a hard
+  power loss can leave `live.json` at `true` with no process, because the launcher's `finally` never runs. On the next
+  start, verify `live.json` against the actual process list.
 
 # Data you have (run from roster/, with .venv\Scripts\python.exe)
 
