@@ -1,0 +1,76 @@
+{
+ "verdict": "PASS",
+ "ac_results": [
+  {
+   "ac": "C1 A live smoke run (>= 60 s) receives Polymarket books for target markets and Binance ticks for BTC and ETH; mid_ex_own excludes our size (test)",
+   "status": "pass",
+   "command": "python build/phase-1/audit-tmp/WP1-C/smoke.py (runs trader.marketdata.main --seconds 75, with the RTT log and any crawl sent to scratch); bookcheck.py and bookcheck2.py (each WS-built best bid/ask compared with the venue's best_bid/best_ask fields in every price_change); Binance REST klines cross-check; pytest test_ws_books_sorted_best_first_with_staleness_clock_and_mid_ex_own",
+   "evidence": "Exit 0, SMOKE OK. 222 markets (77+77 strike, 2+2 daily updown, 32+32 fast). crypto-term: 316/316 tokens had a book; crypto-fast: 120/128. 63,168 book events and 198 trades. BTC 670 ticks, ETH 698. DVOL BTC 35.49 / ETH 49.65; usdt_usd 0.999455; RTT 207.7 ms. Every kernel feed name was present (polymarket, polymarket:<mode>, binance:BTC/ETH, dvol:BTC/ETH, basis:USDT). Book accuracy: 116,294 of 116,646 price_change messages (99.7%) matched the venue's own best bid/ask. The mismatches were transient (most cleared in 1 message, the longest after 49) and none remained at the end; no book was crossed at the end. The published finals equal Binance REST exactly (BTC 9/30 12:00 ET 1m close 84160.25; 06-07Z 1h close 84121.45). The mid_ex_own test sets Book.own on the best bid and the mid skips it. All 222 target markets got the right kind and source_id (the crawler regex limits crypto-term slugs to above or up-or-down)."
+  },
+  {
+   "ac": "C2 Rounding, minimum size, never rounding up and batch limits are tested; setting a live flag raises",
+   "status": "pass",
+   "command": "pytest test_rounding_min_size_never_rounds_up_batch_limit_and_live_flag; probe.py P3/P4/P5/P8",
+   "evidence": "Test passes. P4: 200,000 random prices at ticks 0.01 and 0.001 gave 0 roundings that were more aggressive or off-tick (BUY rounds down, SELL rounds up). round_size floors (4.9999999999 -> 4.99; 5.004 -> 5.0). The only 'up' case is 5e-12 shares of float tolerance, which is not a real round-up. 4.999 is refused below the minimum of 5. A batch of 16 raises ValueError; 15 is accepted. LiveTradingForbidden is raised for live=True, for setting router.live, and for TRADER_LIVE set to '1', 'true', 'yes', 'TRUE' or ' on '."
+  },
+  {
+   "ac": "C3 Fill-model tests: maker fills on a trade through its price; maker at the touch fills only after queue-ahead plus own size; taker fills at the arrival-time book, partially when size is short; fees correct",
+   "status": "pass",
+   "command": "pytest test_maker_fills_on_a_trade_through_its_price, test_maker_at_the_touch_fills_only_after_queue_ahead_plus_own_size_trades, test_taker_fills_at_the_arrival_time_book_partially_with_fees; code read of router.py lines 263-322; probe.py P6/P9/P10",
+   "evidence": "Tests pass. Code: _takers runs before the new book is stored, so a taker fills against the last book received before its arrival. Same-side trades do not move the queue. Trades before created + RTT are ignored (P10: _cum stays empty). P6 with the real trader.fees.fee: taker limit 0.55 fills 2 at 0.50 and kills the rest at 0.60; fee 0.035 = 2*0.07*0.5*0.5. Caveats are listed as minor defects: P1 GTD order, P2 no book at arrival, liquidity reuse, clock mix."
+  },
+  {
+   "ac": "C4 Journal: a simulated crash mid-batch, then replay, reproduces every order's state; an unknown order is not retried (test)",
+   "status": "pass",
+   "command": "pytest test_crash_mid_batch_then_replay_reproduces_every_order_and_unknown_is_not_retried; code read of router.py _log/replay/__init__",
+   "evidence": "_log writes, flushes and fsyncs before state.apply. A 'new' entry is on disk before the 'ack' entries, which are sent after the whole batch. In the test, KeyboardInterrupt fires halfway through the 2nd 'new' line of a batch. After restart, the torn line is ignored, the journaled-but-unacked order and the in-flight taker are 'unknown', and positions and cash are equal. A retry on that token/side is rejected and adds no journal line. Reconcile is clean, and resolve_unknown cancels by id."
+  },
+  {
+   "ac": "C5 Reconciler: positions match the fills; an injected mismatch trips a breaker; YES+NO pairs merge (test)",
+   "status": "pass",
+   "command": "pytest test_reconciler_matches_fills_trips_on_mismatch_and_merges_pairs; probe2.py with the real trader.kernel.RiskKernel",
+   "evidence": "Test passes. With the real kernel: a clean reconcile leaves it ACTIVE. Injecting +3 shares of drift gives 'position (journal) Y: 13 vs 10'; kernel state becomes HALTED and the trip record has source 'reconciler' ('reconciler' is in PRIVILEGED). merge_pairs merged 10 pairs, cost 9.5, edge 0.5, leaving positions at 0 and cash at +0.5."
+  },
+  {
+   "ac": "C6 The measured round trip is logged and used by the taker fill timing",
+   "status": "pass",
+   "command": "pytest test_measured_round_trip_sets_taker_arrival_and_is_journaled; cat data/trader/rtt.jsonl; scratch rtt.jsonl from my smoke run",
+   "evidence": "_set_rtt appends each measurement to rtt.jsonl. The builder's runs left 8 lines (202-225 ms; these include the claimed 222.3 and 224.9). My run logged 197.8 and 207.7 ms to scratch. Taker 'new' entries carry arrival_ms = now + 150 + round(rtt) and rtt_ms. In the test, a 400 ms RTT meets a later book than a 100 ms one."
+  },
+  {
+   "ac": "C7 Tests in trader/tests/test_execution.py pass",
+   "status": "pass",
+   "command": ".venv\\Scripts\\python.exe -m pytest trader/tests/test_execution.py -q (from the code root)",
+   "evidence": "14 passed in 0.57s. The whole trader suite: 109 passed in 8.45s."
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "A GTD-expired maker can still fill. on_trade does not check expiry before filling and calls _expire(ts_ms) only afterwards. Probe P1: a maker with expiry_ms=100000 filled 10 shares on a trade through its price at ts 200000. In live use the window is small, because on_book expires orders on every book event, but a venue-vs-local clock gap widens it.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\router.py",
+   "fix_hint": "Call self._expire(ts_ms) at the start of on_trade, or skip makers with o.intent.expiry_ms <= ts_ms in the loop."
+  },
+  {
+   "severity": "minor",
+   "description": "A taker that reaches arrival with no book in the router is not killed. It waits, then fills against a book received after its arrival, with the fill stamped at arrival time (look-ahead). Probe P2: arrival at 1250, no book; a book arrived at 3000; the fill came at 0.30 with ts 1250. The kernel does not require a book, so whether this happens depends on the engines.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\router.py",
+   "fix_hint": "In _takers, when bk is None and arr <= now_ms, log 'done' (FAK with no liquidity) instead of continuing."
+  },
+  {
+   "severity": "minor",
+   "description": "Our own orders reuse the same displayed liquidity. Two takers on one token both fill the full level (probe3: 5 shown, 10 filled at 0.50). A second maker at the same price does not count our first maker in its queue_ahead. Both make paper results slightly optimistic.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\router.py",
+   "fix_hint": "Subtract size already filled at a level from the stored book for the same book snapshot, and add our own resting size at that price to queue_ahead."
+  },
+  {
+   "severity": "minor",
+   "description": "on_trade mixes two clocks. It compares the venue's server timestamp (last_trade_price.timestamp) against the local created_ms + RTT. If the local clock is behind the venue (Binance receive lag measured -68 to -86 ms), trades from shortly before the order could rest count towards queue progress. The builder already reported this.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\marketdata.py",
+   "fix_hint": "Pass the local receive ms (now) as ts_ms to on_trade in MarketData._on_pm, which is conservative, or correct it by the measured server offset."
+  }
+ ],
+ "rules_check": "Paper only: no code path sends, signs or posts an order. The router imports only stdlib, common, trader.contracts and trader.fees. The only outbound calls in marketdata are HTTPS GET /time to clob.polymarket.com, GETs through common.get_json (Binance klines, Deribit DVOL, Kraken ticker), and on the WebSocket only the market subscribe message and 'PING'. There are no private keys or secrets in the owned files. Owned paths: the only changed code files are trader/marketdata.py, router.py, reconciler.py and tests/test_execution.py. Outside them, only required runtime output exists: data/trader/rtt.jsonl (the C6 RTT log) and the crawler snapshot data/markets/2026-10-01T074836Z.jsonl from the forced crawl, which the 'crawl when older than an hour' requirement allows. contracts.py is unmodified: its mtime is 12:11:26, earlier than every work-package file and the orchestrator's trader/__init__.py (12:11:39). WP1-C wrote no reports (reports/phase1_* belongs to WP1-F), so the 'How to reproduce' rule does not apply. Minimal code: 4 files and about 870 lines covering 5 feeds, the router and the reconciler, with no speculative abstractions; State.cost exists only for the merge edge. Polite rate limits: polls every 60 s, market reload every 5 min, reconnect backoff from 1 s up to 60 s. My audit wrote only under build/phase-1/audit-tmp/WP1-C (the smoke run's RTT log and crawl were redirected there; no crawl was triggered).",
+ "tests_rerun_output_tail": "trader/tests/test_execution.py: ..............  14 passed in 0.57s\ntrader/tests (whole trader suite): 109 passed in 8.45s",
+ "notes": "All 7 WP1-C acceptance criteria pass on independent evidence. The live 75 s smoke run passed and live books match the venue's own best bid/ask 99.7% of the time (mismatches are transient). The published finals match Binance REST exactly, and the reconciler halts the real RiskKernel. There are no blocker or major defects and WP1-C has no [ops] items, so the verdict is PASS. The 4 defects found are minor fill-simulator strictness gaps: an expired GTD order can fill, a taker with no book at arrival is not killed, our own orders reuse displayed liquidity, and on_trade mixes clocks. Each makes paper results slightly optimistic in rare cases; a fixer should fix the first two, which are one-line changes. Integration notes for WP1-F: call router.poll(now_ms) every tick, call reconciler.merge_pairs and reconcile at a chosen cadence, wire rtt_ms=lambda: md.rtt_ms, and hand md.markets (the same dict) to both router and kernel. DVOL is in percent. The marketdata docstring's trade rates ('BTC about 3, ETH about 12 trades/s') are stale: I measured about 9/s for each, so the docstring is wrong. Replay skips any unparseable journal line, not just a torn last line; the ledger-fills cross-check in reconcile() covers that case. Scratch probes are in C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\build\\phase-1\\audit-tmp\\WP1-C\\ (probe.py, probe2.py, probe3.py, smoke.py, bookcheck.py, bookcheck2.py)."
+}

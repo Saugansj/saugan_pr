@@ -1,0 +1,83 @@
+{
+ "summary": "I built WP4-D as two standalone modules: the role 25 news sentinel and Loop A for roles 21 and 23. Both are written against the shared contracts and nothing in Phase 1 was touched. All 20 tests in the work package pass, and all 79 tests in tests/phase4 pass alongside the sibling packages' test files. Every code-level acceptance criterion (D1 to D10) is met. D11 needs calendar time and live news sources, so it is pending.\n\nHow the sentinel works:\n- **Prefilter:** an item reaches the LLM only if it names a tracked team or player (case, accents and spacing ignored) and contains a keyword. Words are matched whole, so \"without\" does not count as \"out\".\n- **LLM call:** one call per matching item. The prompt carries only the news text and the candidate team names.\n- **Pulls:** material news, or any LLM failure, pulls quotes on every game the item names. The pull lasts until scheduled kickoff and sets the shrink factor to 0. Each pull also returns a request for a fresh sharp price.\n- **Resume:** a pull lifts only when a sharp price arrives timestamped strictly after the latest pulling news for that game. Newer news re-arms the requirement, and time passing never resumes anything.\n- **Disagreeing sources:** when news outlets disagree about a game, the pull stays and is marked \"sources disagree\".\n\nHow Loop A works:\n- **Blend fit:** fits a, b and c for the role 21 blend, with priors keeping a near 0 and b near 1, and c held between 0 and 1. It returns nothing below 100 clusters.\n- **Bootstrap of c:** resamples whole clusters to get the 20th percentile of c.\n- **Switch rule:** `c_in_force` returns the live c from the registry, or 0.3 if there is none. `c_candidate` builds the candidate record from the bootstrap.\n- **Anchor rule:** `anchored_p` and `anchored_spread` are the anchor rule applied when a price is used.\n- **Refit gate:** `accept_refit` accepts a refit only with at least 100 clusters and a mean gain per cluster above 2 cluster-robust standard errors.\n- **Walk-forward split and refit step:** `walk_forward` splits rows by resolution time with no cluster on both sides. `refit_step` returns the candidate if the gate passes, otherwise the current version.\n\nloop_a.py never writes to the registry or promotes anything. A case-insensitive grep for promot, regist, .record(, sqlite and open( finds nothing, and a test checks this.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\advisor\\sentinel.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\learning\\loop_a.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase4\\test_sentinel_loop_a.py"
+ ],
+ "commands_run": [
+  ".venv\\Scripts\\python.exe -m pytest tests/phase4/test_sentinel_loop_a.py -q  (from code root) -> 20 passed",
+  ".venv\\Scripts\\python.exe -m pytest tests/phase4 -q -> 79 passed (my file plus the sibling WP4-B and WP4-C test files present at the time)",
+  "grep -niE \"promot|regist|\\.record\\(\" learning/loop_a.py -> no matches (exit 1)",
+  "Bias check of fit_blend over 20 seeds of synth(300, a=0.2, b=0.9, c=0.6): mean a=0.200, b=0.890, c=0.605; sd about 0.04 each",
+  "Sanity script: c_candidate on 300 synthetic clusters, plus keyword-matching edge strings"
+ ],
+ "tests_passed": true,
+ "test_output_tail": "....................                                                     [100%]\n20 passed in 9.36s\n(tests/phase4 folder: 79 passed in 20.25s)",
+ "ac_self_check": [
+  {
+   "ac": "D1 Prefilter: no tracked name or no keyword -> no gateway call; a match -> exactly one call",
+   "status": "met",
+   "evidence": "test_prefilter_calls_llm_only_on_name_and_keyword: no call for an untracked team, a missing keyword, or 'without' (not 'out'). Exactly one call for 'ATLETICO  MADRID defender injured', which matches 'Atlético Madrid' despite case, accents and spacing. Task is '25-sports-news', vendors=1, schema requires material/team/kind. The prompt contains the text and team names but not the url or source family. A player name from the map ('Bukayo Saka doubtful') also triggers a call."
+  },
+  {
+   "ac": "D2 Material -> pull for the right event_key with resume_requires_fresh_observation=True and shrink<=1; LLM or parse failure -> pull",
+   "status": "met",
+   "evidence": "test_material_news_pulls_the_right_event checks scope, action, expiry at scheduled start, shrink 0.0, the reason 'injury, bbc' and the refresh request {event_key, priority: news}. test_llm_or_parse_failure_pulls is parametrized over ok=False, a raised exception, material as a string, an invalid kind and missing fields; every case pulls with reason 'llm-failure'. test_non_material_changes_nothing confirms non-material news leaves no pull."
+  },
+  {
+   "ac": "D3 Resume drill: no resume at +1h/+23h without an observation; an observation not later than the news does not resume; a later one does; newer news re-arms",
+   "status": "met",
+   "evidence": "test_resume_only_after_fresh_observation: at +1h and +23h the pull still stands, and other games' observations do not lift it. Observations at news-5s and exactly at the news time return None; news+1ms resumes (action none, shrink 1.0). After two new news items at +5h and +7h, an observation at +6h does not resume and one at +7h+1ms does. test_news_time_is_max_of_published_and_received covers a source clock that runs ahead of ours."
+  },
+  {
+   "ac": "D4 Disagreeing source families keep the pull and are flagged",
+   "status": "met",
+   "evidence": "test_disagreeing_families_keep_pull_and_flag, run in both orders (material then non-material, and the reverse): the pull stays and the reason is 'injury, bbc; sources disagree'."
+  },
+  {
+   "ac": "D5 Blend fit recovers a, b, c on 300 synthetic clusters; c stays in [0,1] when the data imply c>1 or c<0; below 100 clusters -> None",
+   "status": "met",
+   "evidence": "test_blend_fit_recovers_parameters_and_bounds_c: true values (0.2, 0.9, 0.6), fitted (0.172, 0.859, 0.507), tolerance 0.15. Across 20 seeds the fit is unbiased (mean c 0.605, sd 0.043). Data generated with c=1.8 fit to 1.0 and c=-0.8 fit to 0.0. 99 clusters returns None."
+  },
+  {
+   "ac": "D6 Switch: 0.3 below 100 clusters; above, candidate c = bootstrap lower quantile, <= point estimate, in [0,1]; output is a candidate dict; no registry write or promote in loop_a.py",
+   "status": "met",
+   "evidence": "test_c_switch: c_in_force(None or {}) is 0.3; a live params dict returns its c; a corrupt c of 1.7 returns 0.3. c_candidate on 99 clusters returns None. On 300 clusters it returns exactly {name: kelly-c, params: {c: 0.4748 (the bootstrap 20th percentile), quantile: 0.2, n_clusters: 300}, state: candidate}, and 0 <= 0.4748 <= point estimate 0.5071 <= 1. A regex check over the source for promot|regist|.record(|sqlite|open( finds nothing, and so does the grep."
+  },
+  {
+   "ac": "D7 Refit gate: accepted only with >=100 clusters and gain > 2 cluster-robust SE; a gain significant per row but not per cluster is rejected",
+   "status": "met",
+   "evidence": "test_refit_gate: with 120 clusters and a consistent gain the refit is accepted, and gain and SE match a manual per-cluster computation. The same data cut to 99 clusters is rejected. In the correlated case (120 clusters x 50 identical rows, cluster gains 0.01 +/- 0.1), the naive per-row t-statistic is above 2, but accept_refit rejects it: gain 0.01 < 2 x SE. test_refit_step_takes_candidate_only_when_gate_passes takes a better candidate, rejects a worse one, and rejects a better one with only 75 clusters."
+  },
+  {
+   "ac": "D8 Anchor rule property over 10,000 random refit chains; straddle gives the mid; spread is the wider",
+   "status": "met",
+   "evidence": "test_anchor_rule_property_over_random_refit_chains: 10,000 chains of 1 to 9 refit steps with random mids. Every step satisfies |p_used - mid| <= |p_anchor - mid| and keeps p_used between the mid and the anchor; a straddle gives exactly the mid; anchored_spread is the max. test_chain_of_real_refits_cannot_raise_edge_past_anchor: six real refit_step refits move current from 0.55 to 0.85, all accepted, while anchored_p stays at the anchor's 0.55."
+  },
+  {
+   "ac": "D9 Walk-forward: no test row resolves before any training row; no cluster on both sides",
+   "status": "met",
+   "evidence": "test_walk_forward_split: max(train resolved) < t_split <= min(test resolved); no cluster appears on both sides; every pre-split row stays in training; the fixture includes clusters that straddle the split, so the rule is actually exercised."
+  },
+  {
+   "ac": "D10 pytest tests/phase4/test_sentinel_loop_a.py -q passes, with the autouse socket guard in the file",
+   "status": "met",
+   "evidence": "20 passed. The autouse fixture no_network makes socket.socket.connect raise, and test_guard_blocks_network proves the guard works."
+  },
+  {
+   "ac": "D11 [ops] c switch after 100 resolved clusters as a registry promotion with the human token; sentinel news sources live through role 13",
+   "status": "operational_pending",
+   "evidence": "Needs calendar time (100 resolved clusters), the human token, and role 13's news collector, which is not built in this phase."
+  }
+ ],
+ "key_results": "- On 300 synthetic clusters (6,000 rows, true a=0.2, b=0.9, c=0.6), the blend fit gives a=0.172, b=0.859, c=0.507. Across 20 seeds it is unbiased: mean c 0.605, sd 0.043.\n- The 200-resample cluster bootstrap gives c at the 20th percentile = 0.4748, against a point estimate of 0.5071. `c_candidate` takes about 2.2 seconds.\n- In the correlated-rows case the naive per-row t-statistic is above 2, yet the cluster-level gate correctly rejects it.\n- The anchor property held at every step of 10,000 random refit chains.\n- The sentinel never emits a size or a price.\n\nNo report file was written: the dispatch gives WP4-D no report path and none of its criteria needs a real run. Unit tests make no network, LLM or paid-service calls.\n\nTwo judgement calls:\n1. `refit_step` scores the raw predictions of current and candidate, not their anchor-clamped versions. Clamped scoring would never accept refits that move outward, so Loop A could never produce a better version for Loop B to promote. The clamp still applies when a price is used.\n2. `c_candidate` caps c at min(20th percentile, point estimate) so it can never exceed the point estimate. On realistic data this is just the 20th percentile.",
+ "wiring_notes": "- **Sentinel (advisor process):** construct `Sentinel(gateway, market_maps)` with WP4-C's `advisor.gateway` instance and WP4-A's MarketMap records. Players can be added through an optional `players` list on each map.\n  - For each role 13 news item (`text`, `source_family`, `published_ms`, `recv_ms`, `url`), call `on_news(item)`. It returns a list of (CautionSignal, refresh request) pairs.\n  - Write each CautionSignal where the trader reads T3 signals. A \"pull\" feeds WP4-B's `pull_reasons` for that event_key; the trader takes the latest signal per scope.\n  - Send each refresh request `{event_key, priority: news}` to role 11 / WP4-A, which spends its 20% news reserve on a fresh sharp snapshot.\n  - When WP4-A delivers a sharp snapshot, call `on_sharp_observation(event_key, snapshot obs_ms)`. A non-None result is the resume signal (action \"none\") to publish.\n  - `Sentinel.active` holds the pulls currently in force, for status pages.\n  - Rebuild the Sentinel or the maps when the market map changes (for example, a postponed kickoff changes the expiry).\n- **Loop A (nightly job):**\n  - Read resolved universe-checkpoint rows from the ledger as dicts with y, m (mid ex own), f (calibrated fair), cluster_id = event group, and resolved_ms.\n  - `walk_forward(rows, t_split)` gives (train, test). Fit the candidate on train, then call `refit_step(anchor_fn, current_fn, candidate_fn, test)`. The artifacts are callables row -> P(y=1), so this works for role 21 maps, role 19 devig choices and role 20 toxicity models. If it returns the candidate, WP1-F's registry registers it as the new current version. The anchor never changes here.\n  - `c_candidate(rows)` returns None or a candidate dict. Pass it to `Ledger.register('kelly-c', version, cand['params'])`. Making it live needs `Ledger.promote` with the human token (task 4.5, D11).\n- **Role 23 and the trader:**\n  - Role 23 takes c from `c_in_force(ledger.registry_live('kelly-c'))`. Catch the KeyError and pass None, which gives 0.3.\n  - When a price is used, the trader computes `anchored_p(p_anchor, p_current, mid_ex_own)`, and role 20 uses `anchored_spread(s_anchor, s_current)`.",
+ "open_issues": [
+  "`refit_step` takes an `anchor` argument, as the dispatch signature requires, but deliberately never scores or returns it. The anchor bound is applied when a price is used (`anchored_p` / `anchored_spread`).",
+  "A `players` key on MarketMap records is an optional extension; the dispatch-level MarketMap shape only has team names. Without it the prefilter matches team names only. A future player roster source would populate it.",
+  "The sentinel's pull state is in memory only. If the advisor process restarts, the pulls in force are lost unless the wiring re-reads the last CautionSignals from where it writes them. Writing them durably is a wiring-time decision, not built here.",
+  "Team-name matching is a literal match on normalized names. Aliases such as 'Man Utd' versus 'Manchester United' depend on WP4-A's normalized names plus an alias list, which could be passed in through `players` or an alias field when wiring.",
+  "D11 [ops]: the c switch after 100 resolved clusters, with the human token, and live news sources through role 13 (not built in Phase 4)."
+ ]
+}

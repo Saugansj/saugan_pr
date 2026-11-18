@@ -1,0 +1,104 @@
+{
+ "summary": "WP5-A is built and tested. When I started, none of my owned paths had any files, so I built from scratch. learning/cusum.py covers roles 02 and 34: per_cluster, standardise, the sticky Cusum, Monitor (actions are only lock or alarm), scan, error_corr_z, calibrate_h and trip_rate using a cluster block bootstrap, Siegmund's ARL and a simulated ARL, and venue_changes. learning/postmortem.py covers role 33: BLIND_FIELDS, an outcome-blind classify with rules 1-7 in order, classify_all and sd_by_group, lessons as registry candidates, and an importance score with a half-life. learning/analyst.py covers role 32: breakdown, reliability (universe, traded and gap on identical rows), budget_candidate, and the seeded --smoke. All 29 tests pass offline in about 18 s. The smoke wrote reports/phase5_analysis_smoke.md and found every planted effect. Nothing is applied or promoted; every proposal is a plain candidate dict.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\learning\\analyst.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\learning\\postmortem.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\learning\\cusum.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase5\\test_analysis.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase5_analysis_smoke.md"
+ ],
+ "commands_run": [
+  ".venv\\Scripts\\python.exe -m pytest tests/phase5/test_analysis.py -q -p no:cacheprovider  (29 passed)",
+  ".venv\\Scripts\\python.exe -m pytest tests/phase5 -q -p no:cacheprovider  (29 passed)",
+  ".venv\\Scripts\\python.exe -m learning.analyst --smoke  (wrote reports/phase5_analysis_smoke.md: h=6.7 lessons=1 neg=True var=False drift_trip=65)",
+  "grep -n \"promote(\" learning/analyst.py learning/postmortem.py learning/cusum.py  (no matches, exit 1)",
+  "grep for halt in the three modules: it appears only in prose (a docstring and a report line), never as an action string",
+  "ad-hoc checks: simulated ARL vs Siegmund; calibrate_h for iid, 500-series and AR(1) nulls; how h varies across null samples; detection rate of the planted shift over 40 seeds (34/40 at h=4.3)"
+ ],
+ "tests_passed": true,
+ "test_output_tail": ".............................                                            [100%]\n29 passed in 17.94s",
+ "ac_self_check": [
+  {
+   "ac": "A1 clustered SEs from research.kappa.kappa.clustered_mean; duplicates within a cluster leave the SE unchanged, duplicates counted as new clusters shrink it",
+   "status": "met",
+   "evidence": "test_a1 checks that analyst.clustered_mean and postmortem.clustered_mean are kappa.clustered_mean. It then compares breakdown SEs for clv, primary, markout_5m and reward: unchanged when every row is duplicated inside its own cluster, smaller when the duplicates get new cluster ids. With fewer than 2 clusters the SE is NaN, never a divide-by-zero."
+  },
+  {
+   "ac": "A2 breakdowns never pool modes",
+   "status": "met",
+   "evidence": "test_a2: every output row has exactly one mode. On a two-mode fixture, each mode's breakdown and reliability equal those computed on that mode's rows alone (NaN-aware comparison)."
+  },
+  {
+   "ac": "A3 reliability: calibrated bins within 3 SE, identical rows, universe/traded/gap",
+   "status": "met",
+   "evidence": "test_a3 uses 20,000 seeded rows with y ~ Bernoulli(p). All 10 bins satisfy |freq - mean_p| <= 3 SE. Rows missing p, mid or outcome are dropped from both scores, and brier_p, brier_m and logloss_diff equal hand computations on the complete rows. Every (dim, key) has a universe, traded and gap row, and gap = traded - universe."
+  },
+  {
+   "ac": "A4 budget candidate: total never rises, none below 0, under min_clusters unchanged, candidate dict, no promote(",
+   "status": "met",
+   "evidence": "test_a4 has a hand fixture (A cut by step, freed amount to B pro rata, C under min_clusters unchanged, an unallocated case, None when nothing changes, ValueError on mixed modes) and 300 random cases checking the total, the sign and the under-min rule. test_a4_no_promote_anywhere also passes, and the grep finds nothing."
+  },
+  {
+   "ac": "A5 outcome-blind classify",
+   "status": "met",
+   "evidence": "test_a5: across 1,000 random positions, flipping outcome and negating pnl and primary changes no class. A Guarded dict that fails on any read outside BLIND_FIELDS classifies identically. Code read: classify's only access to the position is {f: pos.get(f) for f in BLIND_FIELDS}."
+  },
+  {
+   "ac": "A6 truth table and precedence",
+   "status": "met",
+   "evidence": "test_a6 is parametrized over 10 cases covering rules 1-7. They include a resolution: flag beating negative CLV, a wording: flag beating a data: flag, positive CLV with the fee not covered giving execution, and clv=None giving indeterminate."
+  },
+  {
+   "ac": "A7 lessons thresholds and importance half-life",
+   "status": "met",
+   "evidence": "test_a7: 20 significantly negative clusters give one lesson named lesson:m:s:model. 19 clusters give none. 20 clusters that are negative but not significant (checked with clustered_mean) give none. 60 rows in 5 clusters give none. variance and indeterminate groups never give one. Importance halves at 30 days and quarters at 60. by='league' produces the name suffix :league=EPL."
+  },
+  {
+   "ac": "A8 CUSUM ARL within 10% of Siegmund (about 338)",
+   "status": "met",
+   "evidence": "test_a8: siegmund_arl(0.5,4)=338.1, and simulate_arl with 4,000 seeded paths is within 10% (332.9 in the smoke, ratio 0.985). The scalar Cusum and the vectorised simulations share one recursion (_step)."
+  },
+  {
+   "ac": "A9 threshold: <= 1.2 on fresh simulation, h rises with n_series, AR(1) h above iid h",
+   "status": "met",
+   "evidence": "test_a9: for an iid null with [(50,14)], h=4.3 with rate <= 1, and h-0.1 exceeds the budget, so h is the smallest grid value. A fresh null sample with seed 7 gives <= 1.2 (1.02 in an ad-hoc run). h for [(500,14)] is larger (6.0 ad-hoc), and h for AR(1) with phi=0.5 is larger (7.7 ad-hoc)."
+  },
+  {
+   "ac": "A10 sticky trips, planted -1 SD shift trips after cluster 50 within 30 at calibrated h, no halt",
+   "status": "met",
+   "evidence": "test_a10_trip_is_sticky: S and the tripped state are unchanged through 100 good observations, and reset clears both. test_a10_planted_shift: calibrated h=4.3, exactly one trip, at index 50 to 80. test_a10_no_halt: ACTIONS == ('lock','alarm'), Monitor refuses 'halt', and the three modules contain no 'halt' or HALTED literal. Over 40 seeds the planted-shift case passed 34 times; the failures were false trips before cluster 50 (and one seed with no trip within 80), as expected at an h tuned for 2-week windows. The test uses seed 0."
+  },
+  {
+   "ac": "A11 bias drift on planted entity only; error-corr fires on 0 -> 0.8; venue_changes alarms correctly",
+   "status": "met",
+   "evidence": "test_a11_bias: only entity C trips, with a high alarm after onset. test_a11_error_corr: exactly one high alarm, at the first or second window at corr 0.8, and none on the 4 monitored null windows. test_a11_venue: a mode-wide fee change alarms on mode:crypto-term, a taker-delay change alarms on venue, a per-mode settlement change alarms on that mode, and one market's tick change gives no alarm."
+  },
+  {
+   "ac": "A12 smoke writes the report with every section and finds the planted effects; ends with How to reproduce",
+   "status": "met",
+   "evidence": "reports/phase5_analysis_smoke.md has: breakdown (30 cells), budget candidates, reliability with bins, class counts, lessons, calibrated h=6.7 for the stated system (rate 0.939, fresh 0.812, sensitivity 6.2-6.4 on other nulls), the ARL check, and the drift section. A lesson was found only for the planted group crypto-hourly:speed-taker:model. The variance group, whose primary is significantly negative, got no lesson. The drift tripped at cluster 65, 15 clusters after the shift, with 0 other trips. The report ends with How to reproduce. test_a12_smoke asserts all of this."
+  },
+  {
+   "ac": "A13 pytest tests/phase5/test_analysis.py -q passes offline",
+   "status": "met",
+   "evidence": "29 passed in 17.94s, with no network use."
+  },
+  {
+   "ac": "A14 [ops] real ledger rows, real per-cluster calibration of h, false-reset rate in operation",
+   "status": "operational_pending",
+   "evidence": "This needs scorer rows from Ledger.as_of and nightly/scorer.py, groups with at least 20 resolved clusters (about 1 crypto cluster a day), and 2 weeks or more of operation to confirm at most 1 false reset per 2 weeks. The smoke uses an iid placeholder null."
+  }
+ ],
+ "key_results": "Smoke (seed 0): one lesson, lesson:crypto-hourly:speed-taker:model, over 72 clusters, mean -0.0585 ± 0.0139, importance 4.20 now and 2.10 after 30 days. The planted variance group's primary is -0.0369 ± 0.0121, which is significantly negative, and it still produces no lesson. Budget candidates (proposals only): crypto-hourly speed-taker 1.0 to 0.5 with 0.5 unallocated, and sports-pregame ladder-maker 1.0 to 0.5. The calibrated h for the stated system of 124 one-sided monitors is 6.7, at 0.939 false trips per 2 weeks (0.812 on a fresh simulation). Across null samples h ranges from 6.2 to 6.7; the 336-cluster hourly family drives both the level and the spread (4.8-5.2 without it). Simulated ARL vs Siegmund: 0.985 at h=4 and 0.996 at h=6.7. The planted -1 SD markout drift on (crypto-term, ETH) tripped the role 02 lock at cluster 65 with no false trips. For the A9 system [(50,14)] alone, h=4.3.",
+ "wiring_notes": "1. Rows: feed breakdown, reliability, classify_all, lessons and scan from Ledger.as_of tables or nightly/scorer.py once their table names are fixed. The rows are plain dicts in the dispatch's shapes. Closed-position rows have no time field, so per_cluster takes time= (fills use ts_ms, forecasts event_ms); positions need a close time added, or a time mapped by cluster_id, before the CLV lock runs.\n2. Monitor actions are {source, scope, action, reason, ts_ms}. Send them to kernel.trip(scope, reason, source) and trader/breakers.py through Loop B; the kernel caps AI and T5 sources at REDUCING. The role 02 markout lock (Monitor('02-cusum','lock','markout',h)) replaces the count-based blacklist (30 fills, 2 SE). Key it by a recurring market series (template, underlying or team), not by cid: each cid sits in one event group, so a per-cid per-cluster series has only one point.\n3. Only the breaker board calls Monitor.reset(key), after it verifies the human token (Phase 1 path). Persist Monitor state (cusums: S and tripped per (key, direction)) across restarts.\n4. Calibrate h once on the real standardised per-cluster series with the real system families, via calibrate_h(null_z, families). Store h, the null's provenance and the seed as a registry entry.\n5. Candidates (budgets:<mode>, lesson:...) are plain {name, version, params, evidence} dicts. trader/contracts.py's Ledger Protocol has no register(), so wiring needs Phase 1 to add Ledger.register (state 'candidate' only). Until then the dicts stay unregistered.\n6. Report sections feed role 36's daily report: reuse analyst.smoke's table code, or render the breakdown and reliability rows directly.\n7. Copy test_a4_no_promote_anywhere, test_a5_outcome_blind and test_a10_no_halt into tests/invariants/.\n8. venue_changes takes MarketInfo lists from consecutive crawler snapshots plus venue dicts, e.g. {taker_delay_ms, settlement:{mode: method}}, and passes now_ms.",
+ "open_issues": [
+  "Contract gap: trader/contracts.py's Ledger Protocol has no register(), which the dispatch's 'optionally passed to Ledger.register' assumes. Candidates are returned as plain dicts; Phase 1 or the orchestrator needs to add register (candidate state only).",
+  "Contract gap: closed-position rows have no close-time field, so the CLV lock's per-cluster ordering needs a time column, or a cluster_id-to-close-time map, at wiring.",
+  "Interpretation: 'fee-net primary statistic per cluster' is computed as the per-position mean of primary with a CR1 SE clustered by event group (the same as lessons). budget_candidate counts clusters with primary present.",
+  "Deviation: error_corr_z's reference window defaults to the first 4 x W clusters (ref_windows=4), or a registered ref_fz, instead of one W-cluster window. With a single-window reference, the null z had about twice the stated variance and gave a false alarm in testing. Per-window SE is still 1/sqrt(W-3) as specified.",
+  "Simplification (ponytail comment in code): reliability's gap row (traded - universe) has no SE, because the subsets overlap. Add a cluster bootstrap if role 36 needs to test the selection effect.",
+  "calibrate_h simulates one-sided 'low' monitors by default (direction parameter). Under a skewed null, compute 'high' monitors separately.",
+  "A10's planted-shift test is deterministic with seed 0. Over 40 seeds the scenario passed 34 times (failures were false trips before cluster 50, plus one seed with no trip within 80), as expected for an h tuned for 2-week windows rather than an 80-cluster run.",
+  "A14 [ops]: needs real ledger rows (at least 20 resolved clusters per group), h calibrated on real per-cluster series, and a confirmed rate of at most 1 false reset per 2 weeks in operation."
+ ]
+}

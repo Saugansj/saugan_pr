@@ -1,0 +1,106 @@
+{
+ "verdict": "PASS_WITH_OPERATIONAL_PENDING",
+ "ac_results": [
+  {
+   "ac": "C1 vendors=2 returns two distinct vendors; most quota left first; len(result)==vendors even when fewer available",
+   "status": "pass",
+   "command": ".venv\\Scripts\\python.exe -m pytest tests/phase4/test_advisor_board.py -q; read gateway._complete; mutation mut_quota (quota_left forced to 5) -> test_c1 FAILS",
+   "evidence": "test_c1 passes: gemini/groq tie-break by name, then groq after gemini drops to 999, vendors=2 gives 2 distinct ok results, vendors=3 with one key gives [gemini, none, none] with 'no vendor available'. Code pads with LLMResult('none',...,'no vendor available') to n. One deviation: cached vendors go first, before quota order (probe P3: a cached gemini is picked at 998 left over groq at 999). This is benign because a cache hit spends nothing, and it is documented."
+  },
+  {
+   "ac": "C2 quota persists across two instances on one db, resets next UTC day, exhausted vendor's transport never called",
+   "status": "pass",
+   "command": "pytest (test_c2_*); read LLMGateway._ask/_day/quota_left",
+   "evidence": "Quota table (day, vendor) in SQLite. It is incremented before the transport call (counts when sent). A second instance sees 997, and 1000 after +1 day. With cap 2 and two 500s, the third call returns 'no vendor available' with transport calls still at 2. mut_quota makes both C2 tests fail."
+  },
+  {
+   "ac": "C3 identical input cached=True, no transport call, quota unchanged; failures not cached",
+   "status": "pass",
+   "command": "pytest test_c3; read _complete/_ask",
+   "evidence": "Cache key is sha256(json[task, vendor, model, prompt, schema]). The INSERT runs only after valid() passes. A hit returns cached=True and tokens 0 without touching quota. Test asserts 1 transport call, quota unchanged, and that a 500 followed by a retry makes 2 calls."
+  },
+  {
+   "ac": "C4 timeout, 429, 500, non-JSON, missing field, out-of-enum each ok=False without raising",
+   "status": "pass",
+   "command": "pytest test_c4_fail_closed (7 parametrized) + test_c4_httpx_timeout...; mutation mut_valid -> missing_field/out_of_enum FAIL",
+   "evidence": "Each case gives ok=False with the specific error and data None. httpx.ReadTimeout maps to 'timeout'. An unopenable db gives n failed results and quota_left all 0, and nothing raises."
+  },
+  {
+   "ac": "C5 prompt with env secret value, 64-hex or 'bankroll' refused before any transport call",
+   "status": "pass",
+   "command": "pytest test_c5_*; probe P6; mutation mut_public -> all 7 C5 tests FAIL",
+   "evidence": "is_public() runs on the full text (prompt + schema) before quota or transport. It refuses env values of 8 or more chars for names ending _KEY/_SECRET/_TOKEN/_PASSWORD, any 64-hex run (including inside 0x...), and bankroll/balance/pnl/p&l/position size, case-insensitive. Refusal returns 'non-public content' with no call and no quota spent."
+  },
+  {
+   "ac": "C6 no keys -> every vendor unavailable, transport never called; no trader<->advisor imports",
+   "status": "pass",
+   "command": "pytest test_c6_*; grep -rn \"advisor\" trader/ ; grep -n trader advisor/gateway.py",
+   "evidence": "With no keys, quota_left is all 0, every result is 'no vendor available' and the transport is never called (also probe P2b). grep trader/ finds only a string literal 'advisor:27' in trader/tests/test_kernel.py:82, which is not an import. gateway.py mentions trader only in its docstring. The AST import scan test passes."
+  },
+  {
+   "ac": "C7 parsers: clear parses clear; role-27 missing point or dispute high is a veto; role-28 veto without concrete reading is a veto; non-JSON is a veto",
+   "status": "pass",
+   "command": "pytest test_c7_* (12 cases); probe P1/P1b",
+   "evidence": "A missing point gives 'error' (schema mismatch), which the board treats as a veto. An empty point gives veto 'silent on X'. dispute_risk high gives a veto. A role-28 veto without reading/scenario gives 'malformed veto'. Non-JSON gives error. The literal dispatch rule is met, but see the minor defect: the prompt's own 'not stated in rules' sentinel evades the silence check (P1 -> clear)."
+  },
+  {
+   "ac": "C8 board matrix: both roles x two qualified vendors clear -> cleared; any veto/error/timeout/same-vendor/unqualified -> not",
+   "status": "pass",
+   "command": "pytest test_c8_*; probe P4a-d",
+   "evidence": "7-case matrix passes, with vendors=2 asked per role and the 64-hex hash never in a prompt. My probes: 3 results -> not cleared; 1 result -> not cleared; same vendor with a different model -> not cleared; ok=True data that fails R27 -> not cleared (parse re-validates)."
+  },
+  {
+   "ac": "C9 every vendor at zero quota: nothing cleared, nothing written",
+   "status": "pass",
+   "command": "pytest test_c9_exhausted_quota_blocks_clearance_and_writes_nothing; repro.py (real no-key run)",
+   "evidence": "Real LLMGateway with caps 0 and ROSTER_ADVISOR_KEY set: 0 transport calls, both roles veto, no db and no JSONL. The no-key reproduction gave 16/16 agree-not-cleared, calls 0, and created neither llm.db nor keys.jsonl."
+  },
+  {
+   "ac": "C10 record read by load_advice, key==clearance_key(m), verify True/False, keys JSONL accepted by clearance_cli sign",
+   "status": "pass",
+   "command": "pytest test_c10_*; probe P5/P5b",
+   "evidence": "The record is written via tools.clearance_cli.write (same shape and sign). The test asserts the exact field set, the signer, expiry T0+7d, verify True under the advisor key and False under another, and that clearance_cli.main sign --keys returns 0 with the key loaded. Guards: nothing signed without ROSTER_ADVISOR_KEY, nothing when it equals ROSTER_HUMAN_KEY (P5b), and nothing when db resolves to ADVICE_DB (P5, using an ADVICE_DB redirected to scratch)."
+  },
+  {
+   "ac": "C11 agreement CLI end to end with fake gateway on fixture backlog in tmp paths, report has every section",
+   "status": "pass",
+   "command": "pytest test_c11_agreement_cli_end_to_end; repro.py re-ran the real CLI into audit-tmp",
+   "evidence": "Report has the Agreement 2x2 (all four categories = 1), Skipped, Per template with reasons, Vendor calls used (4+4 with the cache reused) and How to reproduce. The human db is untouched. The reproduction of reports/phase4_agreement.md matches: 16 agree-not-cleared, 0 calls, 32/32 role prompts pass is_public, and snapshot rules_sha256 == sha256(rules_text) for all 462 rows."
+  },
+  {
+   "ac": "C12 pytest tests/phase4/test_advisor_board.py -q passes with autouse socket guard",
+   "status": "pass",
+   "command": "C:\\...\\roster\\.venv\\Scripts\\python.exe -m pytest tests/phase4/test_advisor_board.py -q",
+   "evidence": "47 passed in 2.96s. An autouse fixture no_network patches socket.socket.connect to raise. Every gateway in the tests uses a fake Transport or FakeGateway, and none uses httpx_post."
+  },
+  {
+   "ac": "C13 [ops] separate advisor OS user, real free-tier keys, agreement report on real backlog vs human clearances, switch only when they agree",
+   "status": "operational_pending",
+   "command": "read reports/phase4_agreement.md; env check in repro.py",
+   "evidence": "No vendor keys in env, no human clearances (data/trader/advice.db absent), and no kernel uncleared.jsonl. The current report is an honest no-key fail-closed run and says 'This is not a qualification run.'"
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "The role-27 'silence = veto' check never fires for a model that follows the prompt. PROMPT_27 tells the model 'Never leave a field empty: write \"not stated in rules\" where it is silent', but parse_27 vetoes only empty strings. An answer with resolution_source='not stated in rules' and cutoff_time='not stated in rules' plus verdict 'clear' parses as ('clear', []) (probe P1). In practice, silence on a material point is vetoed only through the LLM's own verdict, while the roles doc says 'silence on any material point counts as a veto'. The test fixture CLEAR27 itself clears with cancellation_rule='not stated in rules'. This is still within the dispatch wording ('missing or empty'), and two qualified vendors plus role 28 must all clear. It is also not wired yet, which is why it is rated minor.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\advisor\\board.py",
+   "fix_hint": "In parse_27, treat a point whose answer is 'not stated in rules' (case-insensitive) as silent -> veto. Have the prompt use 'not applicable' for points that don't apply to the market type. Change CLEAR27.cancellation_rule to 'not applicable' and add one test for the sentinel."
+  },
+  {
+   "severity": "minor",
+   "description": "LLMGateway.complete() can raise despite 'it never raises'. n = max(0, int(vendors)) runs outside the try, so vendors=None gives a TypeError (probe P2). This only affects a caller passing the wrong type, since the Protocol types vendors as int.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\advisor\\gateway.py",
+   "fix_hint": "Move the int() conversion inside the try, or fall back to n=1 on a bad value."
+  },
+  {
+   "severity": "minor",
+   "description": "The signer can list three vendor/model pairs. When roles 27 and 28 are answered by different vendor pairs (for example after cache hits), the signer becomes 'llm-board:gemini/...+groq/...+openrouter/...' (probe P4e) instead of the dispatch's 'llm-board:<v1>/<m1>+<v2>/<m2>'. The record still loads and verifies, and the kernel does not parse signer.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\advisor\\board.py",
+   "fix_hint": "Accept and document the n-pair signer, or record the per-role pairs, e.g. 'llm-board:27=v1/m1+v2/m2;28=...'."
+  }
+ ],
+ "rules_check": "No real orders: board.py and gateway.py have no order, router, cancel, redeem or venue code. The only signature is an HMAC clearance record via trader.kernel.sign under env ROSTER_ADVISOR_KEY. It is refused when that key is missing, when it equals ROSTER_HUMAN_KEY, or when the db resolves to data/trader/advice.db. No authenticated venue endpoint is touched.\n\nNo real LLM or paid calls: all vendor HTTP goes through an injected transport. The tests use only a fake Transport or FakeGateway behind an autouse socket guard. The builder's real run had no keys, so it sent 0 requests: the gateway.db quota table is empty and the cache has 0 rows. Vendor keys are read from env at call time and sent in headers (Gemini uses x-goog-api-key, not the URL query). Transport errors log only the exception type.\n\nNo network in tests; no look-ahead applies. AI output cannot raise edge or size: the board only withholds or produces a clearance, and kernel acceptance is a later human-token Phase 1 change.\n\nOwned paths only. WP4-C wrote advisor/gateway.py, advisor/board.py, tests/phase4/test_advisor_board.py, reports/phase4_agreement.md and data/advisor/{backlog_snapshot.jsonl, gateway.db}. The other files with build-window mtimes belong to other WPs or phases (sentinel.py, sports/*, learning/loop_a.py, trader/growth/touch.py, data/trader/trial/*). The project is not a git repo, so this attribution is by mtime and content.\n\nContracts unmodified: advisor/contracts.py mtime 14:21:48 predates the dispatch (14:31); trader/contracts.py dates from Phase 1 (12:11); common.py from 09-30.\n\nNo secrets: the scan found none. The test keys are obvious fakes.\n\nThe report's last section is 'How to reproduce'. The code is minimal: 2 modules (~150 and ~240 lines) and 1 test file. Nothing was installed.",
+ "tests_rerun_output_tail": "...............................................                          [100%]\n47 passed in 2.96s",
+ "notes": "The work package passes: C1 to C12 all check out, the tests re-run at 47 passed, and only C13 waits on operations. No blocker or major defect was found; the three defects above are all minor.\n\nFix the role-27 silence gap before the C13 qualification run. Today a template whose rules name no resolution source can be cleared if both models say 'clear' while reporting 'not stated in rules'.\n\nMutation checks show the tests catch real breakage. Disabling is_public fails 7 tests, disabling the schema validator fails 12, and faking quota fails 13 or more.\n\nBenign deviations from the dispatch, all documented by the builder:\n- Rotation puts cached vendors ahead of quota order.\n- The co-sign JSONL (data/advisor/cleared_keys.jsonl) is written on any clear, even without ROSTER_ADVISOR_KEY. This allows human co-signing during run-alongside; the dispatch's 'No key -> nothing written' sentence is about the signed advice records.\n- The agreement report counts human records without checking their signatures, because the advisor never holds the human key.\n- Quota is not locked across processes; one advisor process is assumed.\n- The public-text filter permanently fails closed for rules that mention 'balance' or contain a 64-hex run. Those templates need human clearance.\n\nScratch files are in C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\build\\phase-4\\audit-tmp\\WP4-C\\ (probe.py, repro.py, mut_*.py, agreement_repro.md).\n\nHow to reproduce (from the code root):\n1. .venv\\Scripts\\python.exe -m pytest tests/phase4/test_advisor_board.py -q\n2. .venv\\Scripts\\python.exe build/phase-4/audit-tmp/WP4-C/probe.py\n3. .venv\\Scripts\\python.exe build/phase-4/audit-tmp/WP4-C/repro.py\n4. For the mutation checks, run: PYTHONPATH='build/phase-4/audit-tmp/WP4-C;.' .venv\\Scripts\\python.exe -m pytest tests/phase4/test_advisor_board.py -q -p mut_public (also mut_valid and mut_quota)."
+}

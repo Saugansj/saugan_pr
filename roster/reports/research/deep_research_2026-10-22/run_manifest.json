@@ -1,0 +1,29 @@
+{
+  "version": "3.0.0",
+  "query": "Practical testable strategies to raise profit and cut losses for a latency/momentum taker strategy on Polymarket 5m/15m BTC/ETH Up/Down markets",
+  "mode": "standard",
+  "started_at": "2026-10-22T16:57:43.774723+00:00",
+  "finished_at": "2026-10-22T17:16:31.861355+00:00",
+  "assumptions": [
+    "trades near-iid except same-moment BTC/ETH entries",
+    "per-trade P&L sd about $2, about 30 trades/day (illustrative)",
+    "settlement reference = Chainlink stream",
+    "paper trading only"
+  ],
+  "provider_config": {
+    "primary": "WebSearch (search-cli unavailable)",
+    "fetch": "WebFetch",
+    "scholarly": null
+  },
+  "report_dir": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\research\\deep_research_2026-10-22",
+  "artifact_paths": {
+    "sources": "sources.jsonl",
+    "evidence": "evidence.jsonl",
+    "claims": "claims.jsonl",
+    "report": "research_report_20261022_polymarket_momentum_rules.md",
+    "html": "research_report_20261022_polymarket_momentum_rules.html",
+    "claim_support": "claim_support_report.md"
+  },
+  "continuation": null,
+  "pdf": "skipped: weasyprint not installed"
+}

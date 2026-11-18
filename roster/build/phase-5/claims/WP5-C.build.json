@@ -1,0 +1,94 @@
+{
+ "summary": "WP5-C is built and the tests pass. Nothing was on disk from an earlier run, so I wrote everything from scratch. `learning/quote_objective.py` is a set of pure functions: the Polymarket reward score (S, Q_one/Q_two, Q_min, conservative Q_others, reward term), a Poisson maximum-likelihood fit of the fill rate with cluster-robust (CR1) SEs, an OLS fit of the adverse move with the spread already removed (CR1 SEs), per-market fits that fall back to the mode fit and then to priors without ever pooling modes, the full objective J, a joint grid-search optimiser, evaluate() which breaks any set of bids into J's terms, and wider() for the Loop A anchor. Every fit is returned as a registry candidate dict and is never applied. The smoke writes reports/phase5_quote_objective.md from the latest market snapshot and recorded books in three modes (crypto-term, crypto-hourly, sports-pregame), next to Phase 1's quotes(). I re-read the reward formula on docs.polymarket.com on 2026-10-01 and it matches the dispatch. One acceptance criterion (C7, the larger σ or τ case) holds only in part, because the specified J makes the inventory-shedding bid tighten; details are under open issues.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\learning\\quote_objective.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase5\\test_quote_objective.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase5_quote_objective.md"
+ ],
+ "commands_run": [
+  ".venv\\Scripts\\python.exe -m pytest tests/phase5/test_quote_objective.py -q  (15 passed)",
+  ".venv\\Scripts\\python.exe -m learning.quote_objective --smoke  (wrote reports/phase5_quote_objective.md, ~14 s, offline)",
+  "grep -n \"promote(\\|\\.register(\\|\\.record(\" learning/quote_objective.py  (no match, exit 1)",
+  ".venv\\Scripts\\python.exe -m pytest tests/phase5 -q --co  (114 collected, my file does not break collection)",
+  "WebFetch docs.polymarket.com/market-makers/liquidity-rewards (public docs, read-only; formula re-verified)",
+  "Ad-hoc seeded scripts: checked fit recovery and CR1 coverage over 20 to 40 seeds, and checked the σ/τ comparative statics numerically"
+ ],
+ "tests_passed": true,
+ "test_output_tail": "...............                                                          [100%]\n15 passed in 13.43s",
+ "ac_self_check": [
+  {
+   "ac": "C1 S(v,s): v=4.5, s=1.5 gives 0.4444; s>=v gives 0; size below reward_min_size gives 0",
+   "status": "met",
+   "evidence": "test_c1_score checks all three and also agrees with Phase 0's research.measure.reward_income.order_score at s in {0, 1, 2.5, 4.4}."
+  },
+  {
+   "ac": "C2 Q_min: one-sided gives Q/3 and two-sided gives max(min, max/3) inside 0.10-0.90; one-sided gives 0 outside",
+   "status": "met",
+   "evidence": "test_c2_q_min covers mid 0.5, 0.10 and 0.9 inside the band, and 0.05 and 0.95 outside it."
+  },
+  {
+   "ac": "C3 Reward term: zero daily rate gives 0; the share matches a hand-computed fixture",
+   "status": "met",
+   "evidence": "test_c3_reward_term uses a hand-computed book. The 40 own shares at 0.49 and the level 10c away are excluded from Q_others, and the Q_min share times rate x tau/86400 matches. A zero rate gives reward 0 in both evaluate() and optimise(). A 49-share quote (under the 50 minimum) scores 0."
+  },
+  {
+   "ac": "C4 fit_fill_rate recovers A and k within 10% on at least 2,000 censored orders; the adverse fit recovers m0 and m1 within 2 SE",
+   "status": "met",
+   "evidence": "test_c4 uses 4,000 synthetic orders at seed 1: A and k are within 10%, and m0 and m1 are within 2 CR1 SEs. A SELL mirror of the fills gives an identical fit. Seed 0 draws m1 2.4 SE off, so the test also checks coverage over 20 seeds with 2,000 orders each: each coefficient must be within 2 SE in at least 16 of 20. Measured: m0 17/20, m1 20/20; an earlier 40-seed run had both inside in 36/40."
+  },
+  {
+   "ac": "C5 A market under min_clusters uses its mode's fit; a two-mode fixture shows no pooling",
+   "status": "met",
+   "evidence": "test_c5: the 10-cluster market's A, k, m0 and m1 equal the crypto-term mode's, with source 'mode'. The 40-cluster market fits on its own ('market'). The crypto-term mode candidate is identical with and without sports rows present. A mode under 30 clusters uses priors[mode] (k = 77 override)."
+  },
+  {
+   "ac": "C6 With q = mid, no reward, no rebate, a = 0, γ = 0 and small λτ, the chosen distance is within one tick of 1/k",
+   "status": "met",
+   "evidence": "test_c6 is parametrised with k = 100 and k = 50, tick 0.001, A = 0.001 and τ = 10 s. Both bids land within one tick of 1/k."
+  },
+  {
+   "ac": "C7 Comparative statics: more negative adverse move; inventory skew and large γ; larger σ or τ never tightens; with a = 0 no double count",
+   "status": "partial",
+   "evidence": "Met: a more negative a(d) never gives a higher price at an equal or larger size (3 cases). With I = +20 at γ = 0.5 and 1, both bids are quoted and the NO bid is closer to its mid than the YES bid; γ = 1e6 takes YES to size 0 and keeps NO. With a = 0, fill equals P x size x (edge + rebate) exactly and J = reward + fills - inventory. The larger σ/τ part is met only where it follows from the specified J (test_c7_sigma_tau_never_tighten): a flat, symmetric quote never tightens, and the bid that adds to expected inventory never tightens, across random q and I. The bid that sheds expected inventory can tighten under larger σ or τ. That follows from the given J, because the inventory term rewards cutting risk; it is not a defect. So 'never tightens' cannot hold universally. See open issues and the report."
+  },
+  {
+   "ac": "C8 Output: on the tick grid, BUY rounded down, never at or above the best ask, sizes floored and >= min_size, |I| after a fill within the limit, complement cap binds",
+   "status": "met",
+   "evidence": "test_c8 runs 30 random scenarios (ticks 0.01 and 0.001, random mid, asks, net, cost and fit) and asserts every constraint on every quote; the complement case is exercised. Fixture: holding 20 YES at 0.52 puts the NO bid at 0.469, strictly below 0.47, at most 20 shares, with reduces_exposure True. With the cost unknown there is no NO bid. A float edge (mid 0.6499999) was fixed by using Phase 1's floor_to, which never rounds up."
+  },
+  {
+   "ac": "C9 wider(a, b) never returns a price or size above either input and drops one-sided tokens; 10 ever-tighter refits through wider(., anchor) never quote tighter than the anchor",
+   "status": "met",
+   "evidence": "test_c9_wider: 200 random pairs pass. Ten refits with k = 100 x 1.3^i get tighter and larger (asserted), and every output of wider(refit, anchor) stays at or below the anchor's price and size."
+  },
+  {
+   "ac": "C10 Fits are candidate dicts; grep for promote( / .register( / .record( finds nothing",
+   "status": "met",
+   "evidence": "The grep exits 1 with no match. test_c10 repeats the grep and checks that every candidate has exactly the keys {name, version, params, evidence}, with names starting 'quote-objective:'."
+  },
+  {
+   "ac": "C11 --smoke writes reports/phase5_quote_objective.md with the sections, ending with How to reproduce",
+   "status": "met",
+   "evidence": "Inputs come from snapshot 2026-10-01T121820Z and the Parquet books recorded 2026-09-30 14:29-14:31, replayed through trader.marketdata.Books. The report has: 7 sample markets (3 crypto-term, 2 crypto-hourly, 2 sports-pregame), each showing the chosen quote and every term next to Phase 1 quotes() scored with the same objective; an inventory scenario (γ 1 vs 50, complement cap binding); a hypothetical $100/day reward pool; synthetic fit candidates; a findings section; and How to reproduce."
+  },
+  {
+   "ac": "C12 pytest tests/phase5/test_quote_objective.py -q passes offline",
+   "status": "met",
+   "evidence": "15 passed in 13.4 s with no network use."
+  },
+  {
+   "ac": "C13 [ops] per-market fits from real maker fills; non-zero reward terms; live use via Loop B and a human token",
+   "status": "operational_pending",
+   "evidence": "Waits on weeks of role 22 paper and live maker order/fill rows, on reward-paying target markets (all 462 in today's snapshot have reward_daily_rate 0), and on Loop B (replay, then shadow, then canary) plus a human token."
+  }
+ ],
+ "key_results": "- **Smoke on real inputs:** the objective with the prior fill parameters (A = 0.01/s, 1/k = 1 cent, a = 0) quotes at the touch, or one tick inside a wider book. Phase 1 sits half_min + vol below q. On one-tick books both quote the touch.\n- **Sizing:** J is linear in size apart from the inventory term, so the objective sizes up to the 50-share inventory limit, where Phase 1 quotes 10.\n- **γ needs calibrating:** at the stated σ (0.0005 per √s) and γ = 1, the inventory term is negligible. γ = 50 visibly widens the YES bid when long YES. γ must be calibrated before this replaces quotes().\n- **Rebate matters:** at mid 0.5 the rebate is 0.0035 per share, against a 1-cent edge.\n- **Reward term:** 0 on every sampled market, because no target market pays rewards today. A hypothetical $100/day pool adds about $0.0125 per 60 s quote on the real book.\n- **Fits:** synthetic fits recover the true parameters, and the CR1 SEs cover the truth at close to the nominal rate.\n- **Speed:** about 0.14 s per optimise() call at tick 0.001 (d_max 40 ticks, size step 1).",
+ "wiring_notes": "1. **Replace quotes() inside the ladder engine.** In `trader.engines.ladder.market_intents`, call `optimise(m, q, mid, (yes.best_ask(), no.best_ask()), net, cost, fit, sigma, tau, reward, q_others(yes, mid, v), p)` instead of `quotes(...)`. The output has the same shape, `[(token, price, size, reduces)]`. Phase 1's `pull_reason()` already runs before `market_intents` in `LadderEngine.on_tick`, so pulls still come first.\n2. **Inputs to compute:**\n   - τ = min(requote interval, (end_ms - pull_before_close_ms - now)/1000)\n   - σ = realised mid volatility per √s, in probability units\n   - reward = {min_size, max_spread, daily_rate} from the crawler row's reward_min_size, reward_max_spread and reward_daily_rate\n   - rebate_rate from fee_schedule.rebateRate, passed in p\n3. **Anchor:** pass the result through `wider(current, anchor)`, with anchors from Phase 4's `learning/loop_a.py`.\n4. **Fits:** feed `fit_candidates(orders, fills)` with maker order rows and fill rows from `nightly/scorer.py` once its table names are fixed. Each result is a candidate dict to pass to the ledger's registry, where it only becomes state 'candidate'. The live fit is read through registry_live after Loop B and role 31 clear it and a human token is given.\n5. **Gate:** all of this happens only after the objective passes Loop B (replay, then shadow, then canary) and your token.\n6. **Registry parameters:** γ, d_max, size_step and c should become registry parameters.",
+ "open_issues": [
+  "C7 wording conflicts with the specified J. Under a larger σ or τ, the bid that sheds expected inventory (from I != 0, or from q != mid making e_Y != e_N) can tighten. That is the inventory term working as intended, as in Avellaneda-Stoikov. What holds and is tested: a flat, symmetric quote never tightens, and the bid that adds to expected inventory never tightens. With a reward pool, a larger τ can also pull a quote into the reward band, because the reward grows linearly in τ while fill probability saturates. If the user wants 'never tightens' to hold universally, J would need a different inventory term, for example one based on the variance of inventory. That is a design decision, not a code fix.",
+  "Sign convention for markouts in Phase 1: ladder.income_per_dollar subtracts engine.markouts[cid], which treats it as a cost, but role 22's markout is positive-is-good. Here the prior uses m0 = 0 (markout_prior = 0.0), so this has no effect today. Wiring must agree on the sign before non-zero markouts feed either module.",
+  "J has no capital lock-up cost, which Phase 1's selector does count (r_lock), so it sizes to the inventory limit at the stated γ. γ needs calibrating before use. Gains under 1e-9 USD are treated as ties and resolved toward the more conservative candidate, which avoids far-out quotes with near-zero fill probability.",
+  "Q_others uses the mid passed in (mid_ex_own), not the venue's size-cutoff 'adjusted midpoint'. The docs do not define that adjustment exactly. Phase 0's reward_income.adjusted_mid can be used at wiring if wanted.",
+  "MarketInfo has no rebate or reward fields, so they come from the crawler row through p and reward. The smoke builds MarketInfo for sports rows inline, because trader.marketdata.market_info returns None for them (it only parses crypto assets)."
+ ]
+}

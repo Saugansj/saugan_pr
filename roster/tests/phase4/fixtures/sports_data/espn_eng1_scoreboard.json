@@ -1,0 +1,280 @@
+{
+ "_note": "Captured from site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates=20261010 on 2026-10-01 (public GET); events trimmed to the fields the parser reads.",
+ "leagues": [
+  {
+   "slug": "eng.1"
+  }
+ ],
+ "events": [
+  {
+   "id": "401879268",
+   "date": "2026-10-10T11:30Z",
+   "name": "Leeds United at Arsenal",
+   "shortName": "LEE @ ARS",
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0'",
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Sat, October 10th at 7:30 AM EDT",
+     "shortDetail": "Scheduled"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401879268",
+     "date": "2026-10-10T11:30Z",
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "359",
+        "abbreviation": "ARS",
+        "displayName": "Arsenal"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "357",
+        "abbreviation": "LEE",
+        "displayName": "Leeds United"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401878776",
+   "date": "2026-10-10T14:00Z",
+   "name": "Brentford at Aston Villa",
+   "shortName": "BRE @ AVL",
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0'",
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Sat, October 10th at 10:00 AM EDT",
+     "shortDetail": "Scheduled"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401878776",
+     "date": "2026-10-10T14:00Z",
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "362",
+        "abbreviation": "AVL",
+        "displayName": "Aston Villa"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "337",
+        "abbreviation": "BRE",
+        "displayName": "Brentford"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401878775",
+   "date": "2026-10-10T14:00Z",
+   "name": "AFC Bournemouth at Chelsea",
+   "shortName": "BOU @ CHE",
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0'",
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Sat, October 10th at 10:00 AM EDT",
+     "shortDetail": "Scheduled"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401878775",
+     "date": "2026-10-10T14:00Z",
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "363",
+        "abbreviation": "CHE",
+        "displayName": "Chelsea"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "349",
+        "abbreviation": "BOU",
+        "displayName": "AFC Bournemouth"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401879265",
+   "date": "2026-10-10T14:00Z",
+   "name": "Fulham at Ipswich Town",
+   "shortName": "FUL @ IPS",
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0'",
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Sat, October 10th at 10:00 AM EDT",
+     "shortDetail": "Scheduled"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401879265",
+     "date": "2026-10-10T14:00Z",
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "373",
+        "abbreviation": "IPS",
+        "displayName": "Ipswich Town"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "370",
+        "abbreviation": "FUL",
+        "displayName": "Fulham"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401878772",
+   "date": "2026-10-10T14:00Z",
+   "name": "Brighton & Hove Albion at Sunderland",
+   "shortName": "BHA @ SUN",
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0'",
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Sat, October 10th at 10:00 AM EDT",
+     "shortDetail": "Scheduled"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401878772",
+     "date": "2026-10-10T14:00Z",
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "366",
+        "abbreviation": "SUN",
+        "displayName": "Sunderland"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "331",
+        "abbreviation": "BHA",
+        "displayName": "Brighton & Hove Albion"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401878773",
+   "date": "2026-10-10T16:30Z",
+   "name": "Tottenham Hotspur at Manchester United",
+   "shortName": "TOT @ MAN",
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0'",
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Sat, October 10th at 12:30 PM EDT",
+     "shortDetail": "Scheduled"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401878773",
+     "date": "2026-10-10T16:30Z",
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "360",
+        "abbreviation": "MAN",
+        "displayName": "Manchester United"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "367",
+        "abbreviation": "TOT",
+        "displayName": "Tottenham Hotspur"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

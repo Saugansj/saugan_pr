@@ -1,0 +1,79 @@
+{
+ "summary": "WP3-D is code-complete. An earlier builder had left capital.py and fast_updown.py on disk; I kept both. capital.py needed no changes. The new tests found two real defects in fast_updown.py, and I fixed both. I wrote the missing tests/phase3/test_gates.py (19 tests, all pass, no network) and reports/phase3_gates.md. All 93 tests under tests/phase3 pass. No order was placed, no authenticated or paid endpoint was called, nothing was installed, and no file outside the owned paths was edited.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\growth\\fast_updown.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase3\\test_gates.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase3_gates.md"
+ ],
+ "commands_run": [
+  ".venv/Scripts/python.exe -m trader.growth.fast_updown",
+  ".venv/Scripts/python.exe -m pytest tests/phase3/test_gates.py -q",
+  "mutation checks: broke each TWAP variance formula and the per-token room check in turn; the tests failed each time, then the original file was restored",
+  ".venv/Scripts/python.exe -m pytest tests/phase3 -q",
+  "grep -nE 'urllib|http\\.client|httpx|websockets|socket|get_json|py_clob_client|eth_account|POST|api_key|secret|os\\.environ' over the 3 owned code/test files",
+  "scratchpad gates_status.py: current_cap and latency_gate on a fresh temporary ledger; read-only sqlite check of data/trader/trader.db (the file does not exist)",
+  "reproduce one-liner from the report (prints '50.0 set()')"
+ ],
+ "tests_passed": true,
+ "test_output_tail": "tests/phase3/test_gates.py: 19 passed in 1.67s\ntests/phase3 (all four WPs): 93 passed in 17.11s",
+ "ac_self_check": [
+  {
+   "ac": "D1 test_passed refusals and valid case",
+   "status": "met",
+   "evidence": "test_passed_refusals_and_valid_case refuses: a missing pre-registration; 0 rows; 2 rows; n=199 against 200; mean == 2·se even with verdict='PASS'; se=0; a row recorded before its pre-registration; a cap mismatch (250 vs 50); and a read at as_of(0). The valid case returns (True, 'passed')."
+  },
+  {
+   "ac": "D2 capital ladder",
+   "status": "met",
+   "evidence": "test_capital_ladder uses a temporary ledger and monkeypatches a fake ROSTER_HUMAN_KEY. A fresh ledger gives 50. Refusals that leave the cap unchanged: a skip from 50 to 500, a test run at another cap, a bad token (PermissionError) and a reused nonce. A retry with a fresh token completes the step to 250. It then climbs to 500 and 1000. Stepping down and stepping past 1000 are refused. All three versions are in the registry with cap_usd, from_usd, test, result and evidence. Retiring the live version gives 50. A re-climb with the retired step's test is refused; a new test gets version 250-2."
+  },
+  {
+   "ac": "D3 TWAP",
+   "status": "met",
+   "evidence": "test_twap_properties: continuous at τ=w; 0.5 < P < 1 on 50 log-spaced τ in [1e-3, 1e4]; P=0.5 at x=open for τ≥w; P increases in x; a tie at τ=0 gives 1.0. Also test_twap_monte_carlo (seeded ABM) at τ=70 and at τ=40 with 20 s realised; replacing either variance formula with a wrong one fails it."
+  },
+  {
+   "ac": "D4 gate",
+   "status": "met",
+   "evidence": "With no pre-registration, or no E6 row, the gate is empty and the engine returns [] on 300 random inputs. A pooled pass without by_asset gives an empty set. With BTC at 3 SE, ETH at 1.5 SE and SOL at n<200, the gate is {'BTC'} and only the BTC cid is quoted. test_engine_reads_no_files: an AST check finds no open/read_text/Path calls in the module, and the gate and engine run with builtins.open, io.open, Path.open and Path.read_text patched to raise."
+  },
+  {
+   "ac": "D5 maker",
+   "status": "met",
+   "evidence": "test_maker_bids_both_outcomes: bids on Up and Down, on the tick grid, price <= q - half, below the ask, size = min_size <= 5; min_size 6 gives no quotes. test_shrink_invariant_random: 10,000 random (f, m) pairs. test_pull_rules_remove_quotes: close, stale_book, stale_feed, sharp_move and book_integrity each remove both makers and takers. test_empty_gtd_window_no_maker. test_every_maker_expiry_meets_kernel_gtd: the real RiskKernel.gtd accepts every maker expiry over 1,500 random 5m/15m/4h scenarios (more than 500 intents checked), and every emitted intent satisfies the invariant."
+  },
+  {
+   "ac": "D6 taker",
+   "status": "met",
+   "evidence": "test_taker_rules: the taker fires only when the E6 edge is > 0 and the fee-net edge at the ask exceeds min_edge (it fires at the ask with size = min_size and expiry = now + give_up_ms). No taker when the edge is missing, 0 or negative, or when min_edge is 0.2. Pulled gives []. Only one taker per market at a time. An in-flight taker blocks the Up bid. A new taker is allowed after the deadline. With 1 share held, nothing is placed on that token. Up-token exposure is at most 5. max_shares=6 raises ValueError."
+  },
+  {
+   "ac": "D7 report",
+   "status": "met",
+   "evidence": "reports/phase3_gates.md covers the ladder steps and what each needs, current_cap on a fresh ledger ($50, from a real run), the gate status (CLOSED: no E6 row, and data/trader/trader.db does not exist), a worked example, the defects fixed, the gaps and the wiring. It ends with 'How to reproduce', whose one-liner was run and prints '50.0 set()'."
+  },
+  {
+   "ac": "D8 rules check R1-R4",
+   "status": "met",
+   "evidence": "R1: only the owned paths were touched (fast_updown.py edited; test_gates.py and phase3_gates.md created; capital.py unchanged). R2/R3: the grep finds only RiskKernel(secret='x') in the test, the allowed HMAC secret argument. Neither module does any network I/O, reads os.environ or uses credentials. R4: the helpers are imported from ladder, fees, ledger and kernel, not copied; there is one test file."
+  },
+  {
+   "ac": "D9 tests pass",
+   "status": "met",
+   "evidence": "pytest tests/phase3/test_gates.py -q: 19 passed. Full tests/phase3: 93 passed."
+  },
+  {
+   "ac": "D10 [ops] real capital steps, the 4-week E6 recording, the fast maker's own Loop B test",
+   "status": "operational_pending",
+   "evidence": "These need real money, live results, calendar time and the human token. No E6 row or ledger exists today."
+  }
+ ],
+ "key_results": "- Fresh ledger: current_cap = $50.0 and latency_gate = set(), so the fast Up/Down gate is CLOSED. data/trader/trader.db does not exist yet, so there are no real E6 or global-cap rows.\n- Two defects fixed in trader/growth/fast_updown.py, both found by the new tests:\n  1. Over-cap exposure: one tick could emit both a maker bid and a taker on the same token (10 shares against max_shares 5 when min_size is 5), and a taker still in flight was not counted. The fix is a per-token room budget: room = max_shares - held - in-flight taker, and the taker draws on it before the maker bid.\n  2. Stale pending taker: an expired pending taker was pruned only at the end of on_tick, so it blocked the market for one extra tick. The prune now runs at the start of on_tick.\n- The kernel's GTD rule leaves maker quotes possible only in the first 16 s of a 5m window, the first 616 s of a 15m window and almost all of a 4h window. Fast makers are therefore nearly inert on 5m markets. The report records this as a design consequence, not a defect.\n- Contract gap (as the dispatch allows): the pre-registration's recorded_ms is read with a read-only SELECT on Ledger.db.",
+ "wiring_notes": "- Kernel: RiskKernel(global_cap_usd=capital.current_cap(ledger)); its 1.1x bankroll refusal then follows the cap.\n- Result rows: role 22 or 35 writes one Ledger.record('test_results', {test, n, mean, se, cap_usd, evidence, by_asset?}, event_ms) per test.\n- Pre-registrations: the loop writes fast_updown.LATENCY_PREREG and FAST_PREREG once with Ledger.preregister, before the data is analysed.\n- Capital steps: the human signs human_token(key, 'promote:global-cap:<version>:live', nonce) and the loop calls capital.promote_step(ledger, next_usd, test_name, nonce, sig, now_ms).\n- Engine: FastUpDownMaker(latency_gate(ledger, now), edges=e6_edges(ledger, now)). Without edges, takers stay off (fails closed).\n- STRATEGIES gains fast-updown-maker with a canary-sized budget. ref[asset] must carry price, ts_ms and dvol (or sigma_q).\n- kernel.starts must stay unset for crypto-fast markets, and the kernel's gtd_margin_ms must stay <= the engine's (30 s vs 45 s).",
+ "open_issues": [
+  "No 4h groups reach the engine: recorder.crawler and trader.marketdata produce crypto-fast groups only for 5m/15m slugs (marketdata matches only '\\d+m'). The engine parses '-4h@', but 4h markets need the crawler's SLUG_MODE and the marketdata slug regex extended, which falls outside this WP's paths.",
+  "The open price is a Binance proxy for the Chainlink snapshot open (marked with a ponytail: comment). Read Polymarket's own open/TWAP feed once one exists.",
+  "Under the kernel's GTD rule, 5m makers can quote only in the first ~16 s of each window. The operator should decide whether 5m stays in scope for the maker.",
+  "[ops] D10: real capital steps with the human token, the 4-week own-machine E6 recording, and the fast maker's own Loop B test (replay -> shadow -> canary -> token)."
+ ]
+}

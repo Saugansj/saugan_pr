@@ -1,0 +1,82 @@
+{
+ "_note": "MOCK, shaped from odds-api.io v3 public docs (GET /v3/events list; GET /v3/odds/multi returns a list of events with bookmakers -> markets; the 1X2 market is named 'ML' with home/draw/away decimal strings). Not a live capture: verify when a key exists (A11 [ops]).",
+ "events": [
+  {
+   "id": 1001,
+   "home": "Arsenal",
+   "away": "Leeds United",
+   "date": "2026-10-10T11:30:00Z",
+   "status": "pending",
+   "sport": {
+    "name": "Football",
+    "slug": "football"
+   },
+   "league": {
+    "name": "England - Premier League",
+    "slug": "england-premier-league"
+   }
+  }
+ ],
+ "odds": [
+  {
+   "id": 1001,
+   "home": "Arsenal",
+   "away": "Leeds United",
+   "date": "2026-10-10T11:30:00Z",
+   "status": "pending",
+   "league": {
+    "name": "England - Premier League",
+    "slug": "england-premier-league"
+   },
+   "bookmakers": {
+    "Bet365": [
+     {
+      "name": "ML",
+      "updatedAt": "2026-10-09T11:00:00Z",
+      "odds": [
+       {
+        "home": "1.36",
+        "draw": "5.00",
+        "away": "8.50"
+       }
+      ]
+     },
+     {
+      "name": "Totals",
+      "updatedAt": "2026-10-09T11:00:00Z",
+      "odds": [
+       {
+        "hdp": 2.5,
+        "over": "1.80",
+        "under": "2.00"
+       }
+      ]
+     }
+    ],
+    "Unibet": [
+     {
+      "name": "ML",
+      "updatedAt": "2026-10-09T10:55:00Z",
+      "odds": [
+       {
+        "home": "1.38",
+        "draw": "4.90",
+        "away": "8.00"
+       }
+      ]
+     }
+    ],
+    "Broken": [
+     {
+      "name": "ML",
+      "odds": [
+       {
+        "home": "N/A"
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,17 @@
+                      entry            valued at  events  mean edge (c/share)  SE (c)     t verdict
+0  tick s + 2 (150ms + RTT)             mid +10s    2265                1.750   0.245  7.14        
+1  tick s + 2 (150ms + RTT)             mid +30s    2165                2.019   0.344  5.88    PASS
+2  tick s + 2 (150ms + RTT)             mid +60s    1993                1.995   0.452  4.41        
+3  tick s + 2 (150ms + RTT)  final outcome (1/0)    2317                2.856   0.741  3.86        
+        entry      valued at  events  mean edge (c/share)  SE (c)      t verdict
+0  tick s + 1       mid +30s    2168                6.506   0.385  16.92    PASS
+1  tick s + 1  final outcome    2352                7.212   0.747   9.65    PASS
+2  tick s + 2       mid +30s    2165                2.019   0.344   5.88    PASS
+3  tick s + 2  final outcome    2317                2.856   0.741   3.86    PASS
+4  tick s + 3       mid +30s    2156                0.499   0.329   1.51    FAIL
+5  tick s + 3  final outcome    2313                1.624   0.736   2.20    PASS
+6  tick s + 4       mid +30s    2175               -0.657   0.305  -2.15    FAIL
+7  tick s + 4  final outcome    2319                0.554   0.727   0.76    FAIL
+8  tick s + 5       mid +30s    2165               -0.943   0.304  -3.10    FAIL
+9  tick s + 5  final outcome    2295                0.232   0.732   0.32    FAIL
+exit=0

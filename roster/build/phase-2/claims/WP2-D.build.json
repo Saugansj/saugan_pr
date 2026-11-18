@@ -1,0 +1,110 @@
+{
+ "summary": "I built WP2-D from scratch: no earlier builder files were on disk in the owned paths. The settlement keeper (2.6) is in trader/live/settlement.py and the canary evaluation (2.8) is in trader/live/canary.py. Both are standalone and not wired into the loop. The keeper only makes public GETs and never signs, orders or sends a real page.\n\nTests: tests/phase2/test_settlement_canary.py has 37 tests behind an autouse fixture that blocks the network. All 37 pass, and the whole tests/phase2 folder passes (179). A mutation check showed the tests catch a broken strict '>', broken DST timing, broken once-only paging and a broken open-SELL filter.\n\nReal runs: an offline check against Phase 0 data, a read-only live check over 7 days, and the canary command line on synthetic rows. Reports: reports/phase2_settlement.md, reports/phase2_canary_synthetic.md and reports/phase2_canary_synthetic_shifted.md.\n\nOne statistical finding needs a human decision. Under the canary rule as specified, live rows drawn from the same process as replay FAIL about 59% of the time.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\live\\settlement.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\live\\canary.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase2\\test_settlement_canary.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase2_settlement.md",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase2_canary_synthetic.md",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase2_canary_synthetic_shifted.md"
+ ],
+ "commands_run": [
+  ".venv\\Scripts\\python.exe -m pytest tests/phase2/test_settlement_canary.py -q  -> 37 passed",
+  ".venv\\Scripts\\python.exe -m pytest tests/phase2 -q  -> 179 passed",
+  ".venv\\Scripts\\python.exe -m tests.phase2.test_settlement_canary  (D3/D4/D6 drill output, D8 false-FAIL rate)",
+  ".venv\\Scripts\\python.exe -m tests.phase2.test_settlement_canary --history  (offline: 8,669/8,669 strike, 1,116/1,116 updown, 8,281/8,281 proposals)",
+  ".venv\\Scripts\\python.exe -m tests.phase2.test_settlement_canary --smoke-days 7  (public read-only GETs: 168/168 agree)",
+  ".venv\\Scripts\\python.exe -m tests.phase2.test_settlement_canary --synthetic <scratchpad>\\wp2d",
+  ".venv\\Scripts\\python.exe -m trader.live.canary --live ...synthetic_live.jsonl --replay ...synthetic_replay.jsonl --out reports/phase2_canary_synthetic.md --label SYNTHETIC...  -> PASS",
+  ".venv\\Scripts\\python.exe -m trader.live.canary --live ...synthetic_live_shifted.jsonl --replay ... --out reports/phase2_canary_synthetic_shifted.md  -> FAIL [0, 1) fill_rate",
+  "Get-FileHash on two same-seed CLI outputs -> identical 82BC275B...E8ED8",
+  "mutation check via sed on settlement.py (4 mutants, each killed; file restored)",
+  "scratch Bonferroni comparison (temp script, deleted)",
+  "grep secret / 0x+64hex / ntfy topic / trader.loop on owned files -> clean"
+ ],
+ "tests_passed": true,
+ "test_output_tail": ".....................................                                    [100%]\n37 passed in 3.90s\n(tests/phase2 overall: 179 passed in 8.43s)",
+ "ac_self_check": [
+  {
+   "ac": "D1 derive_outcome on fixtures, DST-day timing matches binance_check",
+   "status": "met",
+   "evidence": "Tests cover a strike above, below and equal (equal gives NO); daily Up/Down up, down and tie (tie gives 50-50); hourly close >= open gives Up; chainlink, sports or empty source gives None. The DST fixture is a 2026-11-01 settlement; it asserts the candle times equal history.polymarket.noon_et_ms (the function binance_check uses) and includes a decoy candle 24 h earlier. A second test checks the old 12:00Z endDate convention. Offline run: 8,669/8,669 strike and 1,116/1,116 Up/Down agree with the recorded winners."
+  },
+  {
+   "ac": "D2 proposal(): 1e18/0/5e17 mapping, '69'/missing/garbage -> None on cached records",
+   "status": "met",
+   "evidence": "test_d2_* use records copied from research/measure/data/resolutions.jsonl. The 50-50 case is a cached record with one field changed, because the cache has no 50-50 record. The offline run found 8,281/8,281 cached proposals agree with the derived outcome."
+  },
+  {
+   "ac": "D3 mismatch drill: one page + one REDUCING lock, page has cid/outcomes/deadline=proposal+2h, no repage",
+   "status": "met",
+   "evidence": "test_d3_mismatch_pages_once_and_locks runs against a real RiskKernel: scopes[cid]=REDUCING with source breaker:settlement and the global state still ACTIVE. The page body has the cid, question, 'proposed: NO', 'derived: YES' and the deadline 18:06Z (proposal 16:06Z + 2 h). The second step adds nothing."
+  },
+  {
+   "ac": "D4 unreadable after print+grace -> page+lock; dispute on held market -> one trip + one page",
+   "status": "met",
+   "evidence": "test_d4_unreadable_source_after_grace: nothing at 9 min, a page and a lock at 10 min, nothing new at 11 min, for both a chainlink market and a Binance market whose GETs fail. test_d4_dispute_on_held_market: one trip with source breaker:dispute and one page; the unheld disputed market is untouched. Garbage responses don't raise."
+  },
+  {
+   "ac": "D5 oracle_gap contains printed-unresolved market, drops it on resolution",
+   "status": "met",
+   "evidence": "test_d5_oracle_gap walks the states waiting -> printed -> matched -> resolved. The market leaves the gap at resolution and is not polled again. Printed markets we don't hold are in the gap without any GET being spent on them."
+  },
+  {
+   "ac": "D6 fund_intents merges/redeems; gate refuses under HALTED, allows merge under REDUCING",
+   "status": "met",
+   "evidence": "test_d6_fund_intents: merge 8.0 (net of open SELL offers; a cancelled SELL is ignored), merge 7.12 (floored), redeem of winning shares, both tokens on 50-50, and no redeem for mismatched, disputed or locked markets. test_d6_gate covers global and market HALTED, global REDUCING, a market lock, and status flags."
+  },
+  {
+   "ac": "D7 page(): no topic -> no call/False; body has no balance/position/credential; no hard-coded topic",
+   "status": "met",
+   "evidence": "test_d7_page_no_topic, test_d7_page_body_and_topic_hygiene (the body lines are exactly cid, question, proposed, derived and challenge deadline; the topic is not in caplog when the send fails) and test_d7_no_hardcoded_topic. grep -nE 'ntfy\\.sh/\\w' over the owned files finds nothing."
+  },
+  {
+   "ac": "D8 canary: same-process PASS, shifted FAIL naming bucket+metric, 29 -> INSUFFICIENT, no replay clusters -> FAIL, same seed identical",
+   "status": "met",
+   "evidence": "test_d8_* all pass, and the CLI output is byte-identical across runs. Caveat: the PASS case relies on its fixed seed. Under the rule as specified, about 59% of same-process samples FAIL (measured over 100 and 200 seeds), as reported."
+  },
+  {
+   "ac": "D9 rows_from_journal from fixture journal, queue_ahead from new entries, markout from injected mid_at",
+   "status": "met",
+   "evidence": "test_d9_rows_from_journal builds a journal with BUY, SELL partial-then-cancel, unfilled, still-open and taker orders plus a torn last line. It checks queue_ahead, the cluster (event_group), BUY and SELL markout signs, that mid_at is asked at fill + 300 s, and the buckets."
+  },
+  {
+   "ac": "D10 tests pass with no-network fixture; phase2_settlement.md has D3, D4, D6, D8 runs and ends with How to reproduce",
+   "status": "met",
+   "evidence": "The autouse no_network fixture blocks non-loopback connections. reports/phase2_settlement.md has all four runs plus the offline and live checks, and ends with '## How to reproduce'."
+  },
+  {
+   "ac": "D11 tests in tests/phase2/test_settlement_canary.py pass",
+   "status": "met",
+   "evidence": "37 passed in 3.90s"
+  },
+  {
+   "ac": "D12 [ops] real canary report over >=30 live fill clusters",
+   "status": "operational_pending",
+   "evidence": "Needs about 30 days or more of live-micro. The CLI is ready; only synthetic reports exist, clearly labelled."
+  },
+  {
+   "ac": "D13 [ops] Chainlink TWAP reader for crypto-fast outcomes",
+   "status": "operational_pending",
+   "evidence": "Needs CLOB credentials. Until then, chainlink markets derive None and page 'source cannot be read' and lock 10 min after the print (tested)."
+  },
+  {
+   "ac": "D14 [ops] relayer redeem/merge execution and the real-ntfy mismatch drill",
+   "status": "operational_pending",
+   "evidence": "Needs an authenticated relayer behind the three flags and a real ROSTER_NTFY_TOPIC. No page was ever sent."
+  }
+ ],
+ "key_results": "- **Outcome derivation, offline on Phase 0 data:** strike 8,669/8,669 agree with the recorded winners, which is exactly Phase 0's binance_check count. Up/Down 1,116/1,116. Cached proposals 8,281/8,281 agree. The 24 markets not derived all settle 2026-09-30, after the local klines end.\n- **Live read-only check of the real keeper** (public Binance and Data API GETs) over 168 daily markets settled 2026-09-24 to 09-30: 168 derived, 168 with a proposal, 168 agree, 0 mismatches, 0 disputes. This confirms the real response shapes.\n- **Drills, all on fakes with a real RiskKernel:**\n  - mismatch: 1 page and 1 REDUCING lock on the market, with deadline = proposal + 2 h, and no repage\n  - unreadable source: page and lock at 10 min, not at 9\n  - dispute: one trip (breaker:dispute) and one page\n  - merge and redeem intents are correct, and the gate refuses everything under HALTED\n- **Canary on synthetic rows:** PASS, and the shifted negative control FAILs on '[0, 1) fill_rate'. Output is deterministic.\n- **Finding that needs your call:** the rule as specified uses a 90% interval for each of 4 buckets x 2 metrics, so live rows from the same process as replay FAIL 59% of the time (theory 57%). A Bonferroni-adjusted interval (0.625th to 99.375th percentile) measured 16% false FAILs and still caught a 0.60 to 0.85 fill-rate shift 100% of the time. I did not change the specified rule.\n- **Choices beyond the dispatch, all leaning safe:**\n  - the oracle gap includes printed markets we don't hold, so WP2-C's cap covers a first buy after the print\n  - the dispute lock is REDUCING\n  - an unreadable source counts as a mismatch, so redeem is refused\n  - the print candle is read only 60 s after it closes (SETTLE_MS)\n  - the canary judges the fill rate in every bucket with live orders and fails when fills have no 5m mid",
+ "wiring_notes": "- **Keeper:** the loop builds `SettlementKeeper(markets, common.get_json, settlement.page, kernel.trip)` and calls `keeper.step(now_ms, router.positions)` once a minute in a worker thread. It uses public GETs only; failures are logged and retried on the next step.\n  - Keep held markets in `markets` until they resolve. The keeper also remembers markets it has started tracking.\n  - Drop closed markets you don't hold, so they leave the gap.\n- **Fund intents:** send `fund_intents(router.positions, router.open_orders(), markets, keeper.statuses)` through `gate(fi, kernel.scopes, keeper.statuses.get(fi.cid))`, then to role 05's relayer once it exists (D14). In paper, `PaperRouter.merge` covers merges.\n- **Oracle gap:** feed `keeper.oracle_gap()` to the ladder engine's pull rule and to WP2-C `check_live(..., printed=...)`.\n- **Paging:** `settlement.page` reads `ROSTER_NTFY_TOPIC` at call time and is a local log only when the variable is unset.\n- **Canary, nightly:**\n  - build rows with `rows_from_journal(data/trader/live_journal.jsonl, markets, mid_at)` and the same over the paper or replay journal\n  - `mid_at(token, ts)` returns mid excluding own orders, from the recorder's books\n  - run `python -m trader.live.canary --live live.jsonl --replay replay.jsonl --out reports/phase2_canary.md`\n- No module imports `trader.loop` or another work package. Imports are only `trader.contracts`, `trader.router.{OPEN, round_size, replay}` and `trader.engines.ladder.prev_noon_ms`.",
+ "open_issues": [
+  "The canary rule as specified (a 90% interval per bucket per metric, 8 checks) FAILs about 57-59% of live samples drawn from the same process as replay, which would block the Phase 2 exit gate most of the time even with a perfect simulator. Recommendation: Bonferroni-adjusted intervals (0.625th to 99.375th percentile; measured 16% false FAILs with full power at a 0.60 to 0.85 shift). This needs the human's decision because it changes the build plan's statistic. The D8 PASS test relies on its fixed seed.",
+  "Contract gaps, worked around without editing the contracts: Intent has no merge or redeem kind (FundIntent and gate() are used instead); the Kernel protocol's trip has no level argument (the keeper calls RiskKernel.trip(cid, reason, source, REDUCING)); MarketInfo has no hourly flag or Up/Down open (mode == 'crypto-hourly' and Binance prev_noon_ms are used).",
+  "The challenge deadline uses the Data API record's last_update_timestamp + 2 h, because the records have no separate proposal-time field. A reproposal resets it.",
+  "rows_from_journal cannot tell a venue rejection from a normal cancel, because WP2-B journals both as 'cancel' and trader.router.State keeps no reason. Rejected orders would count as unfilled rows, which is conservative for the fill rate.",
+  "A page is sent once per (cid, kind), with no retry if ntfy delivery fails.",
+  "The hourly Up/Down path is covered by unit fixtures only, because Phase 0's catalog has no hourly markets for the offline or live checks.",
+  "D12, D13 and D14 are [ops]: they need live-micro time, CLOB credentials, the relayer and a real ntfy topic."
+ ]
+}

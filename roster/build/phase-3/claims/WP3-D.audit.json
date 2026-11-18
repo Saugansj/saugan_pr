@@ -1,0 +1,82 @@
+{
+ "verdict": "PASS_WITH_OPERATIONAL_PENDING",
+ "ac_results": [
+  {
+   "ac": "D1 test_passed refusals and valid case",
+   "status": "pass",
+   "command": ".venv/Scripts/python.exe -m pytest tests/phase3/test_gates.py -q (test_passed_refusals_and_valid_case); .venv/Scripts/python.exe build/phase-3/audit-tmp/WP3-D/probe_capital.py; mutate.py capital[0..6]",
+   "evidence": "The builder's test refuses each case: missing pre-registration, 0 rows, 2 rows, n=199<200, mean==2se with verdict 'PASS', se=0, a row recorded before its pre-registration, and a cap mismatch. The valid case returns (True,'passed'). My probe also refuses negative se, NaN or inf stats, a missing mean with verdict 'PASS', a pre-registration without pass_z, a row cap of None, and a second row once both are visible to as_of. It passes mean=2.00001se. Mutants that drop each check (> vs >=, the recorded-before check, the exactly-one rule, the n rule, the missing-prereg rule, the cap rule) are all killed by the tests. capital.py:36-85 recomputes the result from n/mean/se/pass_z and never reads a verdict string."
+  },
+  {
+   "ac": "D2 capital ladder",
+   "status": "pass",
+   "command": "pytest test_capital_ladder; probe_capital.py; mutate.py capital[3]",
+   "evidence": "Verified: fresh ledger gives 50.0. Refused with the cap left unchanged: skip 50->500 (ValueError), a test run at cap 250 (ValueError), a bad signature (PermissionError, version left at canary), a reused nonce (PermissionError). A retry with a fresh token completes 50->250. It then climbs 500 and 1000; stepping down and past 1000 are refused. Every version's params carry cap_usd, from_usd, test, result and evidence. Retiring the live version gives 50. My probe also refuses to_usd values 250 (at cap 250), 1000, 499.99, None and 'abc'. A different test after a refused token gets version 250-2 and needs a token for that version. Removing the next-step check is killed by the tests. Ledger.promote (trader/ledger.py:147-156) reads ROSTER_HUMAN_KEY from env only and burns the nonce only on success."
+  },
+  {
+   "ac": "D3 TWAP pricer",
+   "status": "pass",
+   "command": "pytest test_twap_properties, test_twap_monte_carlo; probe_engine.py (independent variance check and 3 extra Monte Carlo cases); mutate.py fast_updown[0,1,9]",
+   "evidence": "twap_up (fast_updown.py:121-133) matches the spec: tau>=w gives var σ²(τ−2w/3); tau<w gives the mean blend and σ²τ³/(3w²). My own derivation gives the same. The variance is continuous at τ=w and >0 on 10,001 grid points. P=0.5 at x=open for τ>=w, P is monotone in x, and a tie at τ=0 gives 1.0. My independent Monte Carlo (seed 99, different σ) agrees within 4 SE at τ=30/done=30, τ=90 and τ=5/done=55. Mutating either variance formula or the tie rule is killed."
+  },
+  {
+   "ac": "D4 gate",
+   "status": "pass",
+   "command": "pytest test_gate_*, test_engine_reads_no_files; grep for file and network calls over fast_updown.py; mutate.py fast_updown[2,3]; probe_survivors.py",
+   "evidence": "With no pre-registration, or with no E6 row, latency_gate gives set() and the engine returns [] on 300 random inputs. A pooled-only row gives set(). With BTC at 3SE, ETH at 1.5SE and SOL at n<200, the gate is {'BTC'} and only the BTC cid is quoted. The module has no open/read_text/Path calls, and grep finds no reference to latency_test.md. The judge-per-asset mutant is killed. The mutant that drops the on_tick asset filter survives, but my probe shows a non-passing asset's market still gets [] because history and opens are recorded only for passing assets. The second guard makes the behaviour correct anyway."
+  },
+  {
+   "ac": "D5 maker",
+   "status": "pass",
+   "command": "pytest test_maker_bids_both_outcomes, test_shrink_invariant_random, test_pull_rules_remove_quotes[5], test_empty_gtd_window_no_maker, test_every_maker_expiry_meets_kernel_gtd; probe_engine.py fuzz; mutate.py fast_updown[4,6,7,8,11]",
+   "evidence": "Bids go on both Up and Down, on the tick grid, at <= q−half and below the ask, with size = min_size <= 5. min_size 6 gives no quote. The invariant holds on 10,000 random pairs. Each of the 5 pull triggers gives []. An empty GTD window gives no maker. My fuzz (400 markets with unaligned window starts, 5m/15m/4h, min_size 1/2/5, max_shares 3/5) produced 6,323 makers: every expiry passed the real RiskKernel.gtd, every price <= q−half, and the invariant held on every intent. Mutants that remove the GTD emptiness check, the pulls, the floor_to and the shrink are all killed."
+  },
+  {
+   "ac": "D6 taker",
+   "status": "pass",
+   "command": "pytest test_taker_rules; probe_exposure.py; probe_exposure2.py; mutate.py fast_updown[5,10,12,13,14]",
+   "evidence": "A taker fires only when the E6 edge is >0 and q−ask−fee−slippage > min_edge. It fires at the ask with size min_size and expiry now+give_up_ms. There is none with the edge missing, 0 or negative, none with min_edge 0.2, and none while pulled. One taker runs per market at a time, and an in-flight taker blocks the same-token bid. max_shares>5 raises ValueError. Over 3,123 fuzzed takers, held plus this tick's intents never exceeded max_shares. My first probe flagged 41 cases, but all of them were my own double count of a filled taker that was still in flight (probe_exposure2 classified 41/41 that way). Mutants that drop the edge>0 check, min_edge, the in-flight room, one-at-a-time or the max_shares clamp are all killed."
+  },
+  {
+   "ac": "D7 report",
+   "status": "pass",
+   "command": "Read reports/phase3_gates.md; probe_engine.py reproduces the report numbers; ran the report's reproduce one-liner",
+   "evidence": "The report has the ladder steps table with what each needs, current_cap on a fresh ledger = $50 from a real run, the gate CLOSED status, a worked example, gaps and wiring. Its last section is 'How to reproduce'. The one-liner prints '50.0 set()'. I re-derived the worked example (f=0.660/q=0.562; f=0.997/q=0.663, taker edge 0.1006, prices 0.53/0.41/0.31) and the Monte Carlo model values (0.6425, 0.8311), and they match. data/trader/trader.db does not exist, so the CLOSED status is accurate."
+  },
+  {
+   "ac": "D8 rules check R1-R4",
+   "status": "pass",
+   "command": "grep -nE 'urllib|http\\.client|httpx|websockets|socket|get_json|py_clob_client|eth_account|POST|api_key|secret|os\\.environ|requests|subprocess|anthropic|openai|open\\(|read_text' over the 3 owned code/test files; find files modified after 17:30; sha256/mtime of contracts; grep growth in trader/*.py trader/engines nightly",
+   "evidence": "R2/R3: the only hits are RiskKernel(secret='x', nonce_path=None) in the test (the allowed HMAC arg) and the test's own AST/patch code. Neither module does network I/O, reads env, uses credentials or makes LLM/paid calls. They return Intents and floats only. Ledger writes go through Ledger.register/promote. R1: the owned files show the claimed mtimes (capital.py 14:50, fast_updown.py/test_gates.py/report around 17:53-17:55). trader/contracts.py (12:11), advisor/contracts.py and common.py predate the work. Other files changed in the window belong to parallel WPs (phase2/4/5, the Phase 1 loop). Nothing references trader.growth, so it is not wired. R4: the ladder/fees/capital/ledger/kernel helpers are imported, not copied. There is one test file, and the report ends with 'How to reproduce'. Minor nit: an unused import and an unused constant (see defects)."
+  },
+  {
+   "ac": "D9 tests pass",
+   "status": "pass",
+   "command": ".venv/Scripts/python.exe -m pytest tests/phase3/test_gates.py -q; .venv/Scripts/python.exe -m pytest tests/phase3 -q; build/phase-3/audit-tmp/WP3-D/nonet.py",
+   "evidence": "19 passed in 2.38s. tests/phase3: 93 passed in 15.87s. With socket connect/getaddrinfo patched to raise, it still gives 19 passed, so the tests need no network. The module self-check prints 'fast_updown self-check ok'."
+  },
+  {
+   "ac": "D10 [ops] real capital steps, 4-week own-machine E6 recording, fast maker's own Loop B test",
+   "status": "operational_pending",
+   "command": "ls data/trader/trader.db; latency_gate on a fresh ledger",
+   "evidence": "These need real money, calendar time and the human token. No ledger or E6 row exists (trader.db is absent), and the gate is set()."
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "Unused code: fast_updown.py imports book_fault from trader.engines.ladder but never uses it (pull_reason already applies it), and it defines TAKER_DELAY_MS = 150 without using it. This is a small R4 minimal-code nit.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\growth\\fast_updown.py",
+   "fix_hint": "Drop book_fault from the import on line 35 and delete TAKER_DELAY_MS on line 43 (LATENCY_PREREG already states the 150 ms)."
+  },
+  {
+   "severity": "minor",
+   "description": "Test gap: no test covers the open-tolerance guard (`first[0] - start <= p[\"open_tol_ms\"]`). A mutant that removes it passes all 19 tests. If the guard were removed, a late-starting engine could record a stale open and misprice its quotes. The current code is correct: my probe shows a first tick 30 s after the window start records no open and gives []. The asset-filter mutant also survives, but that is harmless because history is kept only for passing assets.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase3\\test_gates.py",
+   "fix_hint": "Add one assert: an engine whose first tick comes more than open_tol_ms after the window start returns [] for that window."
+  }
+ ],
+ "rules_check": "R1 holds as far as the evidence shows. The owned files are the only WP3-D changes. The contracts and common.py mtimes predate Phase 3, the two __init__.py files are unchanged (14:21:50), and nothing in trader/*.py, trader/engines or nightly references trader.growth, so nothing is wired. Other files changed at the same time belong to parallel WPs. R2: no urllib, http.client, httpx, websockets, socket or get_json in the module or the test. The tests pass with sockets disabled, and the module's __main__ is a pure self-check. R3: no py_clob_client, eth_account, POST or api_key. The only 'secret' is RiskKernel(secret='x') in the test (the HMAC argument). There is no os.environ in the owned files; ROSTER_HUMAN_KEY is read only inside trader.ledger.Ledger.promote. No order, signing, LLM or paid call, and nothing installed. R4: the helpers are imported (ladder.shrink/invariant_ok/pull_reason/sharp_move/floor_to/sigma_q, fees.fee, Ledger, human_token, RiskKernel.gtd in tests). There is one test file, and the report ends with 'How to reproduce'. Minor nit: one unused import and one unused constant.",
+ "tests_rerun_output_tail": "tests/phase3/test_gates.py: ...................  19 passed in 2.38s\ntests/phase3 (all four WPs): 93 passed in 15.87s\nno-network run (socket connect/getaddrinfo patched to raise): 19 passed in 1.57s\npython -m trader.growth.fast_updown: fast_updown self-check ok\nmutation run (in-memory, no file written): 22 of 24 killed; survivors: on_tick asset filter (redundant, harmless) and open_tol_ms guard (untested)",
+ "notes": "Verdict: PASS_WITH_OPERATIONAL_PENDING. D1-D9 pass on independent evidence, and only D10 [ops] remains. I found no blocker or major defects. Nothing can place, sign, post or cancel an order or reach an authenticated endpoint. Sizes are min_size and never rounded up, prices are floored, there is no AI input and no look-ahead (the open and the TWA use only ticks already seen; a late start fails closed).\n\nObservations that are not defects:\n(1) Re-climb rule. capital.promote_step refuses a re-climb only with a test that backed a now-retired version. Suppose a test passed but never went live, for example version '250' left at canary after a refused token and the human then used a different test. That test can still back a re-climb after a demotion. The dispatch does not require refusing this, and the human token still gates every live step.\n(2) The report's maker windows are off by one. It says 'first 16 s / 616 s / 14,116 s'; my computation gives start+15 s, +615 s and +14,115 s inclusive.\n(3) _check formats cap_usd with :g in the mismatch message. A string cap_usd that mismatches would raise ValueError instead of returning (False, why). That is still a refusal, and every caller passes floats.\n\nAll my scratch work is under C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\build\\phase-3\\audit-tmp\\WP3-D\\: probe_capital.py, probe_engine.py, probe_exposure.py, probe_exposure2.py, probe_survivors.py, mutate.py and nonet.py. I modified no code-base file; the mutants are exec'd in memory only.\n\nHow to reproduce, from roster/:\n.venv\\Scripts\\python.exe -m pytest tests/phase3/test_gates.py -q\n.venv\\Scripts\\python.exe build/phase-3/audit-tmp/WP3-D/probe_capital.py\n.venv\\Scripts\\python.exe build/phase-3/audit-tmp/WP3-D/probe_engine.py\n.venv\\Scripts\\python.exe build/phase-3/audit-tmp/WP3-D/mutate.py\n.venv\\Scripts\\python.exe build/phase-3/audit-tmp/WP3-D/nonet.py"
+}

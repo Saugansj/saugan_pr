@@ -1,0 +1,78 @@
+{
+ "summary": "I built WP3-B, the negRisk executor behind a scanner-evidence gate, as a standalone module. All 18 of its tests pass, and the evidence gate is CLOSED on today's data, as expected. The gate cannot open yet because no event has a signed exactly-one-YES confirmation. Every function the dispatch asks for is in trader/growth/negrisk.py: eligible, hurdle, scan, evidence, basket, completion, plus REGISTRY (state candidate) and PREREG. I added three small helpers: event_from_rows, confirmation_key and confirm. I also replayed the only recorded negRisk books on disk, using local files only. The basket was never cheaper than $1, even before fees. Role 06's conversions are not built, as the dispatch says. Nothing is wired into the loop, kernel or crawler, and no existing file was edited.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\growth\\negrisk.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase3\\test_negrisk.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase3_negrisk.md"
+ ],
+ "commands_run": [
+  ".venv/Scripts/python.exe -m pytest tests/phase3/test_negrisk.py -q  (18 passed)",
+  ".venv/Scripts/python.exe -m pytest tests/phase3 -q  (33 passed, includes WP3-A's tests)",
+  ".venv/Scripts/python.exe -m trader.growth.negrisk --replay  (local parquet + crawler snapshots + rtt.jsonl; no network)",
+  "grep -nE 'urllib|http\\.client|httpx|websockets|socket|get_json' trader/growth/negrisk.py tests/phase3/test_negrisk.py  (no matches)",
+  "grep -nE 'py_clob_client|eth_account|POST|api_key|secret|os\\.environ' ...  (only the HMAC secret argument)"
+ ],
+ "tests_passed": true,
+ "test_output_tail": "..................                                                       [100%]\n18 passed in 0.20s\n(tests/phase3 overall: 33 passed in 14.48s)",
+ "ac_self_check": [
+  {
+   "ac": "B1 hurdle matches hand values for 3-leg and 5-leg baskets with rates 0.07/0.05/0, fee on every leg; <1 executable, >=1 not",
+   "status": "met",
+   "evidence": "test_hurdle_hand_values gives 0.9867 (3-leg), 0.960455 and 1.011941 (5-leg), and exactly 1.0. A zip(strict=True) length mismatch raises. test_basket_refusals refuses a basket whose hurdle is exactly 1.0000."
+  },
+  {
+   "ac": "B2 eligibility: augmented True/None, has_other True/None, non-negRisk leg, confirmation missing/expired/unsigned/tampered, leg added or rules hash changed -> ineligible; valid case eligible",
+   "status": "met",
+   "evidence": "test_valid_event_is_eligible, test_flags_fail_closed (4 cases), test_non_negrisk_leg, test_confirmation_missing_expired_unsigned_tampered (also covers a foreign key, an empty secret and a wrong record type), test_leg_added_or_rules_changed_after_signing, test_event_from_crawler_rows_fails_closed."
+  },
+  {
+   "ac": "B3 evidence gate: 29 closed / 30 open; episode <= round trip doesn't count; ineligible, below-min-size, single-row sightings don't count",
+   "status": "met",
+   "evidence": "test_gate_29_closed_30_open; test_episodes_that_do_not_count (also covers edge <= 0, a missing ask, a missing RTT, a run split by an ineligible row, and unsorted rows); test_scan_rows_feed_the_gate (scan() output feeds evidence())."
+  },
+  {
+   "ac": "B4 basket returns no intents with reason when gate closed, replay_ref empty, ineligible, or hurdle >= 1",
+   "status": "met",
+   "evidence": "test_basket_refusals checks the reason prefixes: 'evidence gate closed', 'no replay_ref', 'ineligible' (no confirmation, and an expired one), 'hurdle 1.0000 >= 1'."
+  },
+  {
+   "ac": "B5 one BUY taker per leg at best ask, same size; size <= smallest best-ask, <= max_shares, floored; below min refused; worst_case_leg_loss hand example; over max_leg_loss refused",
+   "status": "met",
+   "evidence": "test_basket_emits_one_taker_per_leg: a best-ask size of 8.379 floors to 8.37, worst case = 8.37 x (0.9767 - 0.25). test_basket_size_caps_and_refusals: max_shares 6 gives 6.0, budget 5 gives 5.11 (floored), budget 4 gives 4.09 and is refused as below the minimum, max_leg_loss 6.0 is refused (6.08) and 6.1 is accepted."
+  },
+  {
+   "ac": "B6 completion completes missing legs within planned cost + legging budget, nothing beyond",
+   "status": "met",
+   "evidence": "test_completion_within_and_beyond_legging_budget: an ask of 0.255 is within budget and completes only c2; 0.27 gives 'legging budget exceeded'; a partial fill sends only the remainder (3.37); all legs filled gives 'complete'; a missing ask gives no intents."
+  },
+  {
+   "ac": "B7 reports/phase3_negrisk.md with eligibility rule, hurdle, gate, gate status today (CLOSED), optional unconfirmed scanner counts, ends with How to reproduce",
+   "status": "met",
+   "evidence": "The report has all of these sections. It includes replay counts for 48 three-leg events and 1,086 rows: 0 confirmed episodes, and 0 even as if every event were confirmed. Edge max is -0.0367 and the lowest raw sum of asks is 1.0100. The report ends with 'How to reproduce'."
+  },
+  {
+   "ac": "B8 rules check R1-R4",
+   "status": "met",
+   "evidence": "R1: only the 3 owned files were created; no existing file and no __init__.py was edited. R2: the network grep has no matches; the replay reads local files only, under __main__ --replay, and the tests never call it. R3: no order, venue credential or os.environ use; secret appears only as the HMAC argument for kernel.sign/verify. R4: floor_to, SIZE_STEP, fee, taker_rate, sign, verify and Books are imported, not copied; one test file; the report ends with How to reproduce."
+  },
+  {
+   "ac": "B9 tests pass",
+   "status": "met",
+   "evidence": "18 passed in 0.20s"
+  },
+  {
+   "ac": "B10 [ops] >=30 real eligible opportunities > round trip, replay_ref, signed confirmations per event, then role 06 conversions and the pre-registered test",
+   "status": "operational_pending",
+   "evidence": "This needs the loop wired to log negrisk_scan rows, signed confirmations and calendar time. The gate is CLOSED today (0/30)."
+  }
+ ],
+ "key_results": "- The gate is CLOSED (0/30 confirmed-eligible episodes). Every row's reason is 'no exactly-one-YES confirmation'.\n- The replay used the only negRisk recording on disk: sports-pregame, 2026-09-30, hour 14, 1,059 WS messages over 1.9 minutes. It covered 48 non-augmented 3-leg soccer moneyline events (1,086 scanner rows).\n- Round trip used: 210 ms (median of rtt.jsonl) plus a 1,000 ms market taker delay.\n- Even as if every event were confirmed, no row had edge > 0. Edge = 1 - hurdle ranged from -0.1440 to -0.0367 (median -0.0597). The lowest raw sum of asks was 1.0100, so there was no arbitrage even before fees.\n- The sample is too short to say how often an edge appears.\n\nDesign choices worth checking:\n- The confirmation key pins event_id, sorted cids, sorted rules hashes and the leg count.\n- The record carries type 'negrisk-exactly-one-yes', so a clearance signed under the same key can't be replayed as a confirmation.\n- Events with fewer than 2 or duplicate legs are ineligible.\n- event_from_rows returns None if any leg can't be built, because a missing leg makes the basket look cheaper than it is.\n- Candidate parameters: legging_budget 0.01, legging_ms 3000, max_shares 10, budget_usd 10, max_leg_loss_usd 8, n_min 30. max_leg_loss is kept under the kernel's $10 group cap.",
+ "wiring_notes": "The module's docstring and the report already say this. Steps to wire it later:\n\n1. Loop, events: on each crawler snapshot, group rows with neg_risk True by event_slug. Then call negrisk.event_from_rows(event_slug, rows); it returns None on any unbuildable leg, so skip those.\n\n2. Loop, scanner rows: on book updates for a leg's YES token, call\n   scan(event, books, now_ms, rtt_ms + 1000 * seconds_delay, eligible(event, confirmation, now_ms, secret), REGISTRY['negrisk-arb']['params'])\n   and record the row with Ledger.record('negrisk_scan', row, now_ms). Scan only while the polymarket feed is fresh, because stale books would inflate episode durations.\n\n3. Loop, gate and baskets: pass Ledger.as_of('negrisk_scan', now) rows to basket(). basket() recomputes evidence itself. Confirmations are records of type 'negrisk-exactly-one-yes', built by negrisk.confirm(event, expiry_ms, secret). They are stored in advice.db (kernel.load_advice already returns non-clearance records in 'other'), keyed by confirmation_key(event).\n\n4. Kernel changes:\n   - add 'negrisk-arb' to STRATEGIES with modes ('sports-pregame',) and its budget\n   - treat event_group (= event_id on each leg) as one exposure group\n   - count info['worst_case_leg_loss_usd'] against the caps\n   - in REDUCING, allow completion() intents (reduces_exposure=True, reason 'basket=<id> completion') for an in-flight basket within its legging budget\n   - a clearance template would be 'sports-pregame::negrisk' (kind='negrisk')\n\n5. Router: completion() expects the list[Fill] of the basket's orders.\n\n6. Registry: write REGISTRY (candidate) once with Ledger.register and PREREG once with Ledger.preregister.\n\n7. Role 06's conversions: build them only after this strategy's PREREG passes.",
+ "open_issues": [
+  "Contract gap: MarketInfo has no event id, negRisk-augmented flag or 'other' flag. NegRiskEvent carries them, built from crawler rows. trader.marketdata.market_info returns None for sports rows, so event_from_rows builds the leg MarketInfo itself (kind='negrisk', event_group=event_id).",
+  "A completion remainder below the venue minimum order size is sent as is. The router would reject it and the basket stays legged until the legging timeout. It is marked with a ponytail: comment in the code; fix it when completion is wired.",
+  "Only 1.9 minutes of negRisk books are recorded. The 'unconfirmed scanner counts' in the report are a tiny sample, not evidence about how often an edge appears.",
+  "Intent.fair for basket legs is set to ask_i / sum(asks), the normalized implied probability. The kernel doesn't read fair today.",
+  "B10 [ops] is still open: real scanner logs with 30 or more eligible episodes longer than the round trip, a replay that gives replay_ref, signed confirmations per event, then role 06 and the pre-registered test."
+ ]
+}

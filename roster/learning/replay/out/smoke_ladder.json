@@ -1,0 +1,72 @@
+{
+ "engine": "ladder",
+ "class": "trader.engines.ladder.LadderEngine",
+ "source": "trader/engines/ladder.py",
+ "source_sha256": "cce1e23c5faeedf2771b51dbef255bfd05d7dc4eb8aeb445f253dad697d0b806",
+ "window": [
+  1790778541903,
+  1790778659175
+ ],
+ "rtt_ms": 210.0,
+ "ref_note": "Binance 1s klines for the window, fetched in memory by a public GET (common.get_json)",
+ "label": "exploratory",
+ "events": {
+  "book": 84780,
+  "markets": 1,
+  "msg:dvol": 4,
+  "msg:final": 4,
+  "msg:markets": 1,
+  "msg:pm": 46643,
+  "msg:ref": 474,
+  "ref": 474,
+  "tick": 324,
+  "trade": 58
+ },
+ "ticks": 42527,
+ "tripwire_checks": 14289072,
+ "tripwire_violations": 0,
+ "intents": {
+  "maker": 826
+ },
+ "decisions": {
+  "approved: no kernel given": 826
+ },
+ "orders": 826,
+ "rejected": {},
+ "cancels": 826,
+ "fills": {
+  "maker": 0,
+  "taker": 0,
+  "maker_shares": 0,
+  "taker_shares": 0
+ },
+ "fees": 0,
+ "positions": 0,
+ "stat": {
+  "clusters": 0,
+  "mean": null,
+  "se": null,
+  "sharpe": null
+ },
+ "clusters": [],
+ "random_entry": {
+  "R": 100,
+  "seed": 0,
+  "percentile": null,
+  "baseline_mean": null,
+  "baseline_fees": 0.0,
+  "entries": 0
+ },
+ "trials": 2,
+ "trial_family": "replay:ladder-maker",
+ "b1": {
+  "t": 1790778600539,
+  "tokens": 316,
+  "equal": true
+ },
+ "detector_events": 0,
+ "max_5s_move_bp": {
+  "BTC": 7.374969764450717,
+  "ETH": 9.068772138871985
+ }
+}

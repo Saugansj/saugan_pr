@@ -1,0 +1,71 @@
+{
+ "_note": "Polymarket sports WebSocket (wss://sports-api.polymarket.com/ws). 'captured' messages were recorded live on 2026-10-01 (no soccer game was live then); 'soccer_shaped' messages use the same key set with the Polymarket soccer sport codes (epl, lal from gamma-api /sports), so they are shaped like the feed, not captured.",
+ "captured": [
+  {
+   "gameId": 6359299,
+   "leagueAbbreviation": "atp",
+   "homeTeam": "Luciano Darderi",
+   "awayTeam": "Tomas Etcheverry",
+   "status": "inprogress",
+   "score": "0-0",
+   "period": "S2",
+   "live": true,
+   "ended": false
+  },
+  {
+   "gameId": 1712005,
+   "leagueAbbreviation": "dota2",
+   "homeTeam": "Team Kinetix",
+   "awayTeam": "Cloud Dawning",
+   "status": "finished",
+   "score": "000-000|2-1|Bo3",
+   "period": "3/3",
+   "live": false,
+   "ended": true
+  },
+  {
+   "metadataGameId": "id2704879175145664",
+   "leagueAbbreviation": "cricket",
+   "score": "1-0",
+   "period": "FT",
+   "live": false,
+   "ended": true,
+   "finishedTimestamp": "2026-10-01T09:07:45.681008497Z"
+  }
+ ],
+ "soccer_shaped": [
+  {
+   "gameId": 9000001,
+   "leagueAbbreviation": "epl",
+   "homeTeam": "Arsenal",
+   "awayTeam": "Leeds United",
+   "status": "inprogress",
+   "score": "0-0",
+   "period": "1H",
+   "live": true,
+   "ended": false
+  },
+  {
+   "gameId": 9000002,
+   "leagueAbbreviation": "lal",
+   "homeTeam": "Deportivo Alavés",
+   "awayTeam": "Atlético Madrid",
+   "status": "postponed",
+   "score": "0-0",
+   "period": "",
+   "live": false,
+   "ended": false
+  },
+  {
+   "gameId": 9000003,
+   "leagueAbbreviation": "epl",
+   "homeTeam": "Chelsea",
+   "awayTeam": "AFC Bournemouth",
+   "status": "finished",
+   "score": "2-1",
+   "period": "FT",
+   "live": false,
+   "ended": true
+  }
+ ]
+}

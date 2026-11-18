@@ -1,0 +1,76 @@
+{
+ "verdict": "PASS",
+ "ac_results": [
+  {
+   "ac": "B1 State rules: REDUCING rejects a risk-increasing intent and accepts a reducing one; HALTED rejects all new intents; an AI-source trip never reaches HALTED",
+   "status": "pass",
+   "command": "pytest trader/tests/test_kernel.py (test_b1_states, test_b1_ai_trips_capped_at_reducing, test_b1_reducing_nets_live_orders_on_both_routes, test_b1_market_lock_is_scoped); build/phase-1/audit-tmp/WP1-B/probe.py P1/P1b/P8; probe2.py Q1-Q6; mutate2.py",
+   "evidence": "All B1 tests pass. The major defect from round 0 is fixed. With REDUCING and 10 YES held, probe P1 (live SELL 10 YES, then BUY 10 NO) and P1b (live BUY 10 NO, then SELL 10 YES) are both rejected with 'REDUCING: only exposure-reducing orders'. Live orders on both routes add up: Q2, with a live SELL 4 YES and a live BUY 4 NO, approves BUY 2 NO and rejects BUY 3 NO. A journaled order counts (Q1: SELL 4 approved, SELL 5 rejected). A live BUY of the held token does not consume the holding (Q3). Orders in another market do not net (Q4). A NaN position or a NaN filled amount rejects (Q5). A reducing intent still has to pass clearance and provenance (Q6). P8 shows the sources 'human-ish:ai' and 'HUMAN' are capped at REDUCING. Mutations caught: reduces ignores live orders / complement route / SELL route / partial fills, unknown uses filled, cancelled counted live, event-group scope ignored, HALTED ignored, no AI cap, trip can lower, naked SELL allowed."
+  },
+  {
+   "ac": "B2 An intent over an event-group cap or a strategy budget is rejected, and the Decision names the binding cap",
+   "status": "pass",
+   "command": "pytest test_b2_group_cap_binds, test_b2_strategy_budget_binds_and_unknown_orders_count_full, test_nan_inputs_fail_closed, test_exposure_marks_and_ignores_sell_orders, test_strategy_outside_its_modes_rejected; probe.py P4/P5; mutate2.py",
+   "evidence": "An over-cap intent is rejected with binding_cap 'group:BTC@2026-10-02T16:00Z' or 'strategy:btc-speed', and an approved intent also names its tightest cap. P4: an empty bid side now marks 100.0 for 100 shares, the same as a missing book. P5: btc-speed trading a crypto-hourly market is rejected with \"btc-speed does not trade mode 'crypto-hourly'\". The comparisons now reject NaN (code line 182: 'if not need <= room[cap] + 1e-9'). Mutations caught: group cap ignored, strategy budget ignored, exposure ignores open orders, exposure counts SELL orders, empty bid counts 0, NaN room approves, no mode check, exposure unknown uses filled. One mutation survives, 'exposure strategy filter dropped'; see the minor defect."
+  },
+  {
+   "ac": "B3 Clearance: valid key -> approved; changed rules hash, tick or fee -> rejected; missing or expired -> rejected",
+   "status": "pass",
+   "command": "pytest test_b3_clearance; probe.py P2/P9/P10; probe2.py Q10; real_cli.py (real snapshot 2026-10-01T064938Z, scratch DB under audit-tmp/WP1-B/cli); inline check of a marketdata.market_info() market against the CLI-signed record",
+   "evidence": "A changed rules_sha256, tick_size or fee_rate each gives a '<field> changed' rejection. A missing record gives 'no clearance' and an expired one 'clearance expired'. P2 (a record filed under the wrong key_id) now gives 'clearance record is for a different key'. Q10 (key edited after signing) gives 'signature invalid'. P10: min_size 5 and 5.0 give the same id. Real run: rejected before signing, approved after the CLI sign, and a tick change gives 'not cleared: tick_size changed'. Integration: the record signed from the raw crawler row (min_size int 5) has the same key_id as the MarketInfo that WP1-C's market_info() builds (min_size 5.0), and the kernel approves. Mutations caught: clearance skips signature, skips expiry, tick dropped from key, no record key check, key_id no normalisation."
+  },
+  {
+   "ac": "B4 Each provenance check has a failing-input test",
+   "status": "pass",
+   "command": "pytest test_b4_provenance; mutate2.py",
+   "evidence": "There is a failing-input test for each check: wrong source, blank source, stale binance:BTC (6000 ms against a 5000 ms bound), missing polymarket feed, and missing basis:USDT for ladder-maker on a binance USDT market. btc-speed is approved without the basis feed. Mutations caught: no source check, no basis check, stale feed ok, missing feed ok."
+  },
+  {
+   "ac": "B5 GTD rule: a resting expiry past the allowed bound is rejected",
+   "status": "pass",
+   "command": "pytest test_b5_gtd; probe.py P3; mutate2.py; grep of the design docs for the GTD cap",
+   "evidence": "Expiry exactly at end - 2 min is approved; 1 ms later is rejected. Expiry at now + 2 min (below the 2 min + margin floor) is rejected. With a start ahead, now+26m is rejected and now+25m approved. Takers are exempt. Mutations caught: gtd no lower bound, gtd no end bound, start bound ignored. P3 shows the start bound fails open once the start has passed. That is documented in a ponytail note in gtd(). The design docs tie the start bound to the sports scheduled_start (36-agent-roles line 164), and Phase 1 has no sports modes."
+  },
+  {
+   "ac": "B6 The 1.1x cap refusal works",
+   "status": "pass",
+   "command": "pytest test_b6_bankroll_over_1_1x_global_cap, test_nan_inputs_fail_closed; probe.py P11; mutate2.py",
+   "evidence": "A bankroll of 55.00 is approved; 55.01 is rejected with binding_cap 'global'. A reducing SELL is still approved at a bankroll of 99. bankroll() marks at best bid, with no bid or no book = 0 (checked: 14.0). P11: bankroll NaN gives 'bankroll nan > 1.1 x global cap 50.00' with binding_cap 'global'. Mutations caught: 1.1x -> 1.2x, NaN bankroll approves, bankroll marks no-bid at 1."
+  },
+  {
+   "ac": "B7 Breakers: each automatic rule trips on a synthetic input; a reset without a valid unused nonce is refused",
+   "status": "pass",
+   "command": "pytest test_b7_stale_feed_trips_once, test_b7_daily_drawdown, test_b7_markout_blacklist, test_b7_manual_halt_and_reset_needs_valid_unused_nonce; probe.py P6/P7; probe2.py Q7/Q8/Q9; mutate2.py",
+   "evidence": "The stale-feed rule trips once at 61 s. Drawdown trips at 10.2%; after a reset the same equity stays ACTIVE, and a further 10.9% drop trips again. P7 (12% then 50% the same day after a reset) now ends REDUCING. The markout rule locks the market for BUY fills and for adverse SELL fills (c-sold), but not for noisy or favourable ones (Q9: None). A reset is refused for a bad signature, wrong scope, expired token, wrong type or reused nonce, and the used nonce is still refused after a restart. Mutations caught: markout sign flipped for SELL, markout threshold 0, drawdown 20%, drawdown no re-arm, drawdown never re-trips, stale breaker never trips, and reset skips scope / nonce reuse / persist / expiry / type / signature. Q7 found a gap with NaN equity; see the minor defect."
+  },
+  {
+   "ac": "B8 The clearance CLI writes a signed record that the kernel accepts, and a tampered record is rejected",
+   "status": "pass",
+   "command": "pytest test_b8_cli_record_accepted_and_tamper_rejected; real_cli.py",
+   "evidence": "Test: CLI sign exits 0, the kernel approves the record, and stretching the expiry without re-signing gives 'signature invalid'. A token resets once and its reuse is refused. With an empty key the CLI exits 2. Real run: sign rc 0; approved; list shows 'ok crypto-term:BTC:strike rules 43c4bf4589 tick 0.001 source binance:BTC/USDT'; token reset approved and reuse refused; with no ROSTER_HUMAN_KEY it exits 2. load_advice opens the DB read-only (?mode=ro), and a missing file is not created."
+  },
+  {
+   "ac": "B9 Tests in trader/tests/test_kernel.py pass",
+   "status": "pass",
+   "command": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\.venv\\Scripts\\python.exe -m pytest trader/tests/test_kernel.py -q -p no:cacheprovider (from the code root); also trader/tests -q",
+   "evidence": "20 passed in 0.65s. The full trader/tests suite gave 107 passed in 5.47s."
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "Breakers.on_equity can switch the drawdown breaker off for the rest of a UTC day. If the first equity reading of the day is NaN (bankroll() returns NaN when a book has a NaN bid), self.hwm is set to NaN. After that, max(nan, x) stays NaN and dd = NaN > 0.10 is always False. Probe Q7: equity NaN, then 50, then 10 on the same day leaves the state ACTIVE with hwm nan. This fails open, unlike the NaN-safe kernel checks added in this round. While the NaN lasts, the kernel's 1.1x check still rejects new risk, because ctx.bankroll_usd is NaN. The gap stays open after the bad book clears.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\breakers.py",
+   "fix_hint": "At the top of on_equity, ignore a non-finite equity: 'if not math.isfinite(equity_usd): return'. Alternatively, trip REDUCING on it. Either way, hwm is never set to NaN. Add one assert to test_b7_daily_drawdown."
+  },
+  {
+   "severity": "minor",
+   "description": "Test gap: exposure() limits open orders to the strategy being checked ('strategy is None or o.intent.strategy == strategy'), but no test covers that filter, and the mutation that drops it survives. It does not matter in Phase 1, because the two strategies trade different modes and check() now enforces that.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\tests\\test_kernel.py",
+   "fix_hint": "Optional: in test_b2_strategy_budget_binds..., add a live order from the other strategy in the same mode and assert that it does not count toward this strategy's budget. Or leave it until two strategies share a mode."
+  }
+ ],
+ "rules_check": "Paper only: kernel.py, breakers.py, clearance_cli.py and test_kernel.py import only the standard library (hashlib, hmac, json, os, pathlib, sqlite3, argparse, secrets, collections, datetime, statistics) plus common and trader.contracts. A grep for requests, urllib, http, websocket, aiohttp, socket, clob, web3, eth_account, private_key and order-placing calls found nothing. The 'sign' function is an HMAC over human clearance and reset records, not an order signature. No path can send, sign or post an order. Owned paths: WP1-B's files changed after the dispatch (12:12:40) are trader/kernel.py (12:38), trader/breakers.py (12:38), trader/tests/test_kernel.py (12:39) and tools/clearance_cli.py (12:24). Every other recently changed file belongs to another work package's owned paths (WP1-C's marketdata.py, test_execution.py and reconciler.py at 13:20 are WP1-C's parallel fix round). contracts.py was last modified at 12:11:26, before the dispatch, so it is unchanged. No secrets: the only key is the test key 'test-human-key'; the real key comes from env ROSTER_HUMAN_KEY. data/trader contains only WP1-C's rtt.jsonl; the tests write no advice.db or used_nonces.txt into real data, because they use tmp_path. WP1-B writes no reports, so the 'How to reproduce' rule does not apply. Code size is small: kernel.py 271 lines, breakers.py 76, CLI about 110, one test file; no new files and no new packages. No look-ahead: kernel decisions use only ctx at now_ms, and the markout reads the book at or after fill + 5 min, as a post-hoc metric. The kernel never resizes or rounds a size, and an inf size is rejected. No hard-coded results or invented numbers.",
+ "tests_rerun_output_tail": "....................                                                     [100%]\n20 passed in 0.65s\n(full suite: trader/tests -q -p no:cacheprovider -> 107 passed in 5.47s)",
+ "notes": "Every criterion was re-checked against the current code; the builder's claims were not taken on trust. Mutation testing (build/phase-1/audit-tmp/WP1-B/mutate2.py, run on scratch copies in audit-tmp/WP1-B/mut2, deleted afterwards): 46 of 50 caught. The 50 are the original 22, rewritten for the current code, plus 28 new ones aimed at the fixes. Four survive, none of them harmful: (1) 'load_advice not read-only': the code only runs a SELECT, and a missing file returns before connecting. (2) 'no record type check': redundant, because load_advice already files only type=='clearance' records under clearances. (3) 'exposure strategy filter dropped': the minor test gap. (4) 'markout no clear after trip': trips are idempotent. Behaviour that matches the design and is not a defect: after a human reset, the drawdown mark re-arms at the trip equity. So a day can lose 10% plus 9.9% without a second trip (probe Q8), because the human accepted the first loss. Unchanged from the builder's open issues, all failing closed or harmless in Phase 1: (a) The GTD start bound fails open after the start or when kernel.starts is empty. Sports modes must close this before going live; there is a ponytail note in gtd(). (b) For WP1-F: refresh ctx.open_orders between check() calls within one tick, and fill kernel.starts. (c) Any caller can use the 'human' or 'loop' prefixes to set HALTED, which errs on the safe side. (d) An invalid clearance row with a later expiry can hide a valid one, which leaves the market not cleared. Scratch files written this round: audit-tmp/WP1-B/probe2.py and mutate2.py. real_cli.py rewrote audit-tmp/WP1-B/cli/*."
+}

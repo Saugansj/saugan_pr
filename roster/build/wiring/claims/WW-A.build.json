@@ -1,0 +1,55 @@
+{
+ "summary": "WW-A is wired. The kernel and breakers take each new connection behind its flag, and every flag is off by default. With no flags, check() gives the same decisions as the audited Phase 1 kernel: a test compares a SHA-256 digest of 3,000 seeded decisions against the same cases run through the original trader/kernel.py. Kernel changes: RiskKernel gains features=() and ledger=None. live_risk runs Phase 2 check_live with worst_case_positions after Phase 1 approves; it also applies reducing_rule in REDUCING and exposes kernel.pull_ids(open_orders, positions, markets). clock_gate adds kernel.clock(offset_ms, measured_ms, now_ms, clob_offset_ms=None), with a guard for the Phase 2 audit's NaN-timestamp minor defect. capital_ladder sets the global cap from capital.current_cap(ledger), re-read at most once a minute, and refuses to start without a ledger. strategies_for(features) adds negrisk-arb (negrisk_scan), fast-updown-maker (fast_maker) and sports-maker (sports) with budgets of $10, $5 and $5. universe_ext adds the SOL/XRP sources, which need no dvol feed. A new series scope (series:<mode>:<asset>:<kind>) carries the CUSUM lock. Sports makers now always reject when the market's start is unknown or less than 5 minutes away, instead of failing open. Breakers changes: Breakers gains features (taken from kernel.features by default), run_dir and markets. dd7 runs SevenDayDrawdown next to on_equity and saves its samples atomically to <run_dir>/dd7_samples.json, once a minute and on every trip. markout_cusum replaces the count blacklist with the Phase 5 Monitor ('02-cusum', 'lock', 'markout', h=6.7) on per-series, per-event-group cluster means; its state goes to <run_dir>/markout_cusum.json. A human reset of the series scope through kernel.reset also resets the CUSUM. trader/live and learning are imported lazily, so the flags-off paper import closure is unchanged and test_no_order_send_path still passes.\n\nHow to reproduce: from the roster folder run .venv\\Scripts\\python.exe -m pytest tests/wiring/test_ww_a.py trader/tests tests/invariants -q (149 passed), then add tests/phase2 tests/phase3 tests/phase4 tests/phase5 tests/wiring for the full suite (700 passed). To regenerate PHASE1_DIGEST, load the pre-WW-A trader/kernel.py with importlib and call tests.wiring.test_ww_a.decisions(lambda: orig.RiskKernel(secret=KEY, nonce_path=None)).",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\kernel.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\breakers.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\wiring\\test_ww_a.py"
+ ],
+ "commands_run": [
+  ".venv\\Scripts\\python.exe -m pytest trader/tests tests/invariants -q  (baseline: 129 passed)",
+  ".venv\\Scripts\\python.exe scratchpad/golden.py scratchpad/kernel_orig.py  (Phase 1 decision digest from the pre-WW-A kernel copy)",
+  ".venv\\Scripts\\python.exe -m pytest tests/wiring/test_ww_a.py trader/tests tests/invariants -q  (149 passed)",
+  ".venv\\Scripts\\python.exe -m pytest trader/tests tests/invariants tests/phase2 tests/phase3 tests/phase4 tests/phase5 tests/wiring -q  (700 passed)",
+  "ls -la data/trader/paper14  (read-only listing to confirm the paper run was untouched and still writing)"
+ ],
+ "tests_passed": true,
+ "test_output_tail": "tests/wiring/test_ww_a.py trader/tests tests/invariants: 149 passed in 12.28s\ntrader/tests tests/invariants tests/phase2 tests/phase3 tests/phase4 tests/phase5 tests/wiring: 700 passed in 329.60s (0:05:29)",
+ "ac_self_check": [
+  {
+   "ac": "A1 flags off: every existing kernel test passes unchanged and decisions on a recorded intent set are identical (test)",
+   "status": "met",
+   "evidence": "trader/tests (incl. test_kernel.py) and tests/invariants pass unchanged (129). test_a1_flags_off_identical_to_phase1 hashes the decisions (approved, reason, binding_cap) on 3,000 seeded intents and compares them with the digest from the pre-WW-A kernel.py: identical. The cases cover states, trips, live orders, clearances, feed ages, NaN bankroll and prices, GTD starts and sports/negRisk/SOL markets. A second test shows the flags that act outside check() (dd7, clock_gate, heartbeat, settlement, markout_cusum) leave the digest unchanged. A third shows clock(), pull_ids() and Breakers are no-ops with flags off and write no files. Limit: the set is seeded synthetic, not replayed from a live journal."
+  },
+  {
+   "ac": "A2 each flag's rule rejects its synthetic trigger (test per flag)",
+   "status": "met",
+   "evidence": "live_risk: stress-cap and resolution-cap rejections, the REDUCING maker rule (SELL below fair - fee; a taker exit without a token) and pull_ids for REDUCING scopes. dd7: a 11% loss over 2 days trips breaker:drawdown7d. clock_gate: 300 ms gives REDUCING, NaN timestamp gives REDUCING, 1,500 ms gives HALTED from source 'kernel'. Strategy flags (negrisk_scan, fast_maker, sports): each new strategy is unknown with its flag off; with it on, it is approved when valid and rejected over budget, on stale sports feed, with no or near start, with a parsed source, or on the wrong mode. universe_ext: SOL is rejected off, approved on, and rejected on a stale binance:SOL feed. markout_cusum: a -5 SD drift locks the series scope, the kernel then rejects another market of that series, and 30 bad fills no longer trip the per-cid blacklist. capital_ladder: covered under A4."
+  },
+  {
+   "ac": "A3 the dd7 state survives a restart (test)",
+   "status": "met",
+   "evidence": "test_a3_dd7_survives_restart: 100 then 97, restart with a new kernel and Breakers on the same run_dir, then 89 trips. The control without saved samples does not trip. After the trip the re-armed window is saved, so a second restart does not re-trip on the same loss. test_a3_markout_cusum_survives_restart: the trips from a run split by a restart equal the trips from one uninterrupted run."
+  },
+  {
+   "ac": "A4 the capital cap follows current_cap, and the 1.1x refusal follows it (test)",
+   "status": "met",
+   "evidence": "test_a4_capital_ladder with a real Ledger: on a fresh ledger the cap is $50, bankroll 55 passes and 56 is refused. After a live global-cap version of 250 (set by SQL in a tmp db, standing in for promote_step) and one minute, the cap is $250, 270 passes and 276 is refused at 1.1 x 250. Flag off stays $50. capital_ladder without a ledger raises ValueError."
+  },
+  {
+   "ac": "A5 no AI or T5 source can reach HALTED (existing invariant still holds)",
+   "status": "met",
+   "evidence": "trip() is unchanged and the existing invariants pass. test_a5_no_ai_halt_with_every_flag turns on all 13 flags: advisor/02-cusum/34-drift/T5/llm trips at HALTED are capped at REDUCING, and running dd7, the CUSUM lock and the clock gate leaves every HALTED trip from a PRIVILEGED source. New trips: breaker:drawdown7d R, breaker:markout_cusum R, clock gate 'kernel' (T0 code, as Phase 2 audited)."
+  }
+ ],
+ "key_results": "The flags-off check() digest matches the Phase 1 kernel: ca338f30e9b78e7f95d7194337c418b2882980dfdf9adda4a917756d3ec2cfba over 3,000 cases. Full suite: 700 passed. Diffs are small. trader/live and learning load only when a flag needs them, so the paper import closure is unchanged. Nothing under data/trader/paper14 was touched (I only listed it, and its audit.jsonl was still being written by the running process). No process was signalled. My tests write only to pytest tmp dirs, so no data/trader/wiring_A folder was needed.",
+ "flag_notes": "The flags are passed as RiskKernel(features=..., ledger=...). Breakers reads them from kernel.features by default and needs run_dir= (and markets=md.markets for markout_cusum). WW-D's trader/features.py should pass the enabled set to both. What the loop has to do for each flag:\n\n- live_risk: set kernel.ref = md.ref, kernel.opens = {cid: Up/Down open}, kernel.printed = keeper.oracle_gap(). On REDUCING, cancel kernel.pull_ids(router.open_orders(), router.positions, md.markets) through router.cancel. check() applies check_live and, in REDUCING, reducing_rule itself; taker exits fail closed because there is no token path yet.\n- dd7: Breakers(kernel, run_dir=<run dir>). The samples persist to dd7_samples.json.\n- clock_gate: the worker calls kernel.clock(offset_ms, measured_at_ms, now_ms, clob_offset_ms). Expect REDUCING at this PC's ~300 ms offset.\n- capital_ladder: RiskKernel(features, ledger=Ledger). The cap is re-read each minute, and the 1.1x refusal follows it.\n- negrisk_scan / fast_maker / sports: add the negrisk-arb, fast-updown-maker and sports-maker STRATEGIES entries. sports-maker needs kernel.starts filled for sports cids, and both sports-maker and negrisk-arb need markets with source_id \"\" and asset None.\n- universe_ext: adds the SOL/XRP sources to ladder-maker (feeds polymarket and binance:{asset}, no dvol).\n- markout_cusum: Breakers(..., run_dir, markets=md.markets). It locks the series:<mode>:<asset>:<kind> scope and persists to markout_cusum.json.\n\nheartbeat, settlement, touch, quote_objective: no kernel or breakers behaviour.",
+ "open_issues": [
+  "WW-D: trader/loop.py line 525 picks the markets to pre-clear from module STRATEGIES. It should use kernel.strategies, or the new strategies' and SOL/XRP markets never reach uncleared.jsonl.",
+  "Not done (fails closed): negrisk-arb completion intents are refused in REDUCING. Phase 3 asks to allow them within the legging budget, which needs the basket state the kernel doesn't have.",
+  "reducing_rule always gets human_token_ok=False, so a taker exit in REDUCING under live_risk is allowed only when its group is over its cap.",
+  "markout_cusum h=6.7 comes from the WP5-A simulation; it is not yet calibrated on real per-cluster series (Phase 5 A14). A cluster closes only when the series' next cluster starts (one cluster late), and a fill on a market no longer in md.markets is dropped. Both are marked with ponytail comments.",
+  "live_risk stress cap: XRP is outside risk.ASSETS (read-only), so XRP positions count as a full loss. With no ref, open or dvol inputs, any crypto position counts as a full loss, which is conservative and will bind early on a $50 bankroll.",
+  "dd7 samples are saved once a minute and on every trip, so a crash can lose up to 1 minute of samples.",
+  "The paper14 process loaded the old modules at start. If it restarts it will load this code, which with no flags gives the same decisions (A1)."
+ ]
+}

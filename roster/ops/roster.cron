@@ -1,0 +1,9 @@
+# /etc/cron.d/roster on the VM (installed by ops/setup.sh). Times are UTC.
+# m  h  dom mon dow user     command
+5    *  *   *   *   recorder cd /srv/roster && .venv/bin/python -m recorder.compact --budget-gb 150 >> data/logs/compact.log 2>&1
+15   0  *   *   *   recorder cd /srv/roster && .venv/bin/python -m recorder.gapcheck "$(date -u -d yesterday +\%F)" >> data/logs/gapcheck.log 2>&1
+
+# Home PC crontab (crontab -e there, not on the VM): nightly pull of closed Parquet + market snapshots.
+# The VM cannot reach a home PC behind NAT, so the home PC pulls over SSH as user recorder.
+# Open-hour JSONL is skipped (it is compacted to Parquet within the hour); no --delete, so shed streams stay archived.
+# 30 3 * * * rsync -a --partial --timeout=600 --exclude '/recordings/*/*/*.jsonl' -e "ssh -i ~/.ssh/roster_pull" recorder@VM_IP:/srv/roster/data/ ~/roster-archive/ >> ~/roster-archive/rsync.log 2>&1

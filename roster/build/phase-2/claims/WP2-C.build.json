@@ -1,0 +1,76 @@
+{
+ "summary": "I built WP2-C from scratch: no earlier risk.py or test file was on disk, so there was nothing to resume. I wrote two files, both inside my owned paths: trader/live/risk.py (238 lines) and tests/phase2/test_live_risk.py (36 tests). risk.py is pure functions and one small class, with no I/O, and is meant to run after RiskKernel.check approves an intent. What it contains:\n- worst_case_positions: held positions plus the remaining size of every live BUY. `unknown` orders count in full and SELLs never subtract. It accepts router.open_orders() or a replayed State's orders dict.\n- Stress cap: stress_loss and stress_check. BTC, ETH and SOL are moved together by -10%, -5%, +5% and +10%, with volatility times 1.5 in every scenario. Prices come from ladder.digital and sigma_q. The rejection limit is a worst loss above 5% of bankroll.\n- Resolution-risk cap: resolution_check, at 10% of bankroll per market and 20% in total.\n- check_live: runs stress, then resolution, returns the first rejection, or an approval that names the tightest cap. Intents that reduce exposure skip both caps.\n- SevenDayDrawdown: trips global REDUCING with source breaker:drawdown7d, then restarts its window from the trip equity. It keeps only the samples that can still be the 7-day high, so samples() stays small and rebuilding from it gives the same decisions.\n- pull_ids and reducing_rule: the pull and REDUCING rules from 2.5.\n\nTo decide whether an intent or order reduces exposure, it calls Phase 1's own RiskKernel.reduces rather than copying it, so live and paper use the same rule. Every comparison is written so that a NaN input rejects.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\live\\risk.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase2\\test_live_risk.py"
+ ],
+ "commands_run": [
+  ".venv\\Scripts\\python.exe -m pytest tests/phase2/test_live_risk.py -q",
+  ".venv\\Scripts\\python.exe -m pytest tests/phase2 trader/tests/test_kernel.py -q",
+  "grep -nE \"open\\(|socket|urllib|httpx|sqlite3|requests\" trader/live/risk.py  (no matches)",
+  "grep -nE \"0x[0-9a-fA-F]{64}|(secret|passphrase|api_key)\\s*=\\s*['\\\"]\" trader/live/risk.py tests/phase2/test_live_risk.py  (no matches)"
+ ],
+ "tests_passed": true,
+ "test_output_tail": "....................................                                     [100%]\n36 passed in 0.30s\n(tests/phase2 + trader/tests/test_kernel.py together: 101 passed in 1.97s)",
+ "ac_self_check": [
+  {
+   "ac": "C1 worst_case_positions status table + replayed journal",
+   "status": "met",
+   "evidence": "test_c1_status_table covers 11 status/side cases: journaled, open, partial (remaining size), unknown (full size, even when partly filled), filled, cancelled, expired, rejected, and SELLs never subtracting. test_c1_replayed_journal writes a fixture JSONL with a torn last line, runs trader.router.replay on it, and checks both the dict and the list form (53 = 17 held + 10 + 10 + 6 + 10)."
+  },
+  {
+   "ac": "C2 stress scenarios: 4 shocks x sigma*1.5 on BTC/ETH/SOL at once; hand computation within 1e-9; worst scenario by side",
+   "status": "met",
+   "evidence": "Code read: the SHOCKS, VOL_UP and ASSETS constants and the loop in stress_loss. test_c2_scenarios_are_four_shocks_vol_up_on_three_assets: the joint loss equals the sum of each asset's own -10% loss, which shows the three assets are shocked together. test_c2_strike_repricing_matches_hand_computation: strike and Up/Down NO legs match an erf-based hand computation to within 1e-9. test_c2_worst_scenario_by_side: long YES -> -10%, long NO -> +10%."
+  },
+  {
+   "ac": "C3 stress_check",
+   "status": "met",
+   "evidence": "test_c3_threshold_and_binding_cap: approves at 0.99x the 5% boundary and rejects at 1.01x, binding_cap 'stress' both times. test_c3_unknown_buy_turns_approval_into_rejection. test_c3_unpriceable_counts_as_total_loss: missing strike, open, sigma or ref, tau <= 0, or an unmodelled asset -> loss = shares x 1.0. test_c3_nan_rejects: NaN bankroll, spot, DVOL, intent price or shares. test_c3_printed_and_non_crypto_excluded."
+  },
+  {
+   "ac": "C4 resolution_check",
+   "status": "met",
+   "evidence": "test_c4_per_market_bound: rejects with resolution:p1, and a held printed position counts. test_c4_total_bound: rejects with resolution:total while the market itself is under 10%. test_c4_unknown_orders_and_no_bid_count: no bid means 1.0 per share. test_c4_unprinted_markets_unaffected. test_c4_nan_rejects: NaN bankroll, bid or size."
+  },
+  {
+   "ac": "C5 SevenDayDrawdown",
+   "status": "met",
+   "evidence": "test_c5_trips_on_11pct_within_7_days: global REDUCING, source breaker:drawdown7d, which is privileged. test_c5_exactly_10pct_and_old_high_do_not_trip: also covers a high that has dropped out of the window and a NaN mark being skipped. test_c5_reset_rearms_and_nonce_reuse_refused: real RiskKernel.reset with a token signed by trader.kernel.sign; the same equity does not trip again, a further drop of more than 10% does, and a reused nonce is refused. test_c5_rebuild_from_samples_gives_same_decisions: samples go through a JSON round trip and the trips come out identical."
+  },
+  {
+   "ac": "C6 pull_ids and reducing_rule",
+   "status": "met",
+   "evidence": "test_c6_pull_ids_exactly_risk_increasing: the fixture has an uncovered BUY, a covered complement BUY, a SELL, a terminal order, an unknown order and an out-of-scope order; exactly ['uncovered', 'unk'] are returned. Two complement BUYs that together exceed the holding are both pulled, and an order on an unknown market is pulled. test_c6_reducing_rule: a taker exit is refused without a token unless the group is over its cap, a maker SELL below fair - fee is refused, a complement BUY above fair + fee is refused, and NaN refuses."
+  },
+  {
+   "ac": "C7 Entry-gate regression through RiskKernel",
+   "status": "met",
+   "evidence": "test_c7_entry_gate_regression: REDUCING rejects a risk-increasing intent and accepts a SELL and a covered complement BUY, all through clearance, provenance and GTD with a signed clearance. test_c7_market_lock_is_scoped. test_c7_halted_rejects_all_and_ai_capped: an advisor:27 trip is capped at REDUCING, and a human HALTED rejects everything."
+  },
+  {
+   "ac": "C8 check_live order, binding cap, reducing pass-through",
+   "status": "met",
+   "evidence": "test_c8_order_binding_cap_and_reducing: when both caps fail, the result names 'stress', which shows stress runs first. Passing stress but failing resolution gives 'resolution:p1'. Approvals name the tightest cap (stress vs resolution:p1, depending on room). Reducing SELLs and complement BUYs pass even when stress is over. An unknown complement BUY turns the same intent into new risk, which is then rejected by stress."
+  },
+  {
+   "ac": "C9 risk.py does no I/O (grep)",
+   "status": "met",
+   "evidence": "The grep finds nothing (exit 1). test_c9_risk_does_no_io asserts the same and also checks that risk.py does not import trader.loop."
+  },
+  {
+   "ac": "C10 tests pass",
+   "status": "met",
+   "evidence": "36 passed in 0.30s. The autouse no-network fixture is in place. The secret grep over both files finds nothing."
+  }
+ ],
+ "key_results": "All 36 tests in tests/phase2/test_live_risk.py pass, and C1 to C10 are all met. WP2-C has no [ops] items, and the dispatch names no report for it, so I wrote none. Running tests/phase2 together with trader/tests/test_kernel.py gives 101 passed. No Phase 1 file, contract or common.py was edited. Nothing was installed, there were no network calls, and no secrets are in either file.",
+ "wiring_notes": "After kernel.check(intent, ctx) approves, the loop calls:\n`check_live(intent, ctx, worst_case_positions(router.positions, router.open_orders()), md.ref, opens, printed)`\n- `opens` is {cid: open price} for Up/Down markets, taken from ref[asset]['final'] at ladder.prev_noon_ms(m.end_ms) or one minute after it.\n- `printed` is WP2-D's keeper.oracle_gap().\n- ctx.bankroll_usd and ctx.books feed both caps.\n\nNext to Breakers.on_equity, the loop calls `dd7.on_equity(trader.kernel.bankroll(cash, positions, books), now)`. It persists dd7.samples() as JSON under data/trader/, for example dd7_samples.json, and on start passes them back as `SevenDayDrawdown(kernel, samples=json.load(...))`.\n\nWhen any scope enters REDUCING, the loop cancels `pull_ids(router.open_orders(), router.positions, markets, cids_in_scope)` through router.cancel. For a global scope, `cids_in_scope` is every cid.\n\nIn REDUCING, each kernel-approved reducing intent also goes through `reducing_rule(intent, m.fee_rate, group_over_cap, human_token_ok)`. A non-None result means refuse. The loop computes `group_over_cap` from RiskKernel.exposure against group_cap, and `human_token_ok` from a verified human token.\n\nNothing in WP2-C imports another work package or trader.loop.",
+ "open_issues": [
+  "Contract gap, as already listed in the dispatch: KernelContext has no worst-case positions, opens or printed set, and MarketInfo has no Up/Down open. check_live takes these as arguments, and the loop has to supply them.",
+  "stress_loss and resolution_check skip tokens that are missing from `markets`, the same way RiskKernel.exposure does. A held market that drops out of the crawler snapshot before it is redeemed would therefore escape both caps. The loop should keep held markets in `markets` until they are redeemed.",
+  "stress_loss is not given books, so a crypto position it cannot price is taken as a total loss of 1.0 per share. That is fail-closed but may be stricter than the bid value. Following the spec, an Up/Down position whose open has not printed yet also counts as a total loss.",
+  "pull_ids nets each covered complement BUY against all other live orders. Two BUYs that each fit the holding on their own but not together are both pulled, which is cautious; this is marked with a ponytail comment.",
+  "Time to expiry is (end_ms - now) / 1h, while the ladder engine adds one minute for the candle that opens at end_ms. The effect is negligible, and because p_now and p_shocked use the same pricer, it cancels."
+ ]
+}

@@ -1,0 +1,64 @@
+{
+ "verdict": "PASS",
+ "ac_results": [
+  {
+   "ac": "D1 Pricer: matches closed form; P(>K)+P(<=K)=1; decreasing in K; kappa applied per bucket",
+   "status": "pass",
+   "command": "pytest trader/tests/test_ladder.py -v -rs (D1 tests: 5 pass, none skipped, so the Phase 0 replay on research/kappa/out/binary.parquet really ran); auditor probe build/phase-1/audit-tmp/WP1-D/probe.py",
+   "evidence": "Probe: digital() against an independent erf-based N(d2) on 5000 random (S,K,sigma,tau) inputs, max error 0.0. P(>K) plus an independent P(<=K)=N(-d2) equals 1 to 1e-12 on all 5000. The price never increases in K over 60k..100k in steps of 25. Through fair_value at tau 23.9/13/11.9/6/2.5/2.4/1/0.3h, kappa is 0.905/0.905/1.034/1.034/1.034/1.150/1.150/1.150 and sigma_P = kappa x DVOL/100 exactly. Future keys in ref['final'] (E, E+1min) do not change a strike fair (no look-ahead). The KAPPA constants match the dispatch (1h 1.150, 6h 1.034, 24h 0.905), and REGISTRY marks kappa as state 'candidate'. digital() has a basis hook; fair_value always uses 1.0, which is correct for the Binance USDT source. The Up/Down open (prev_noon_ms plus final keyed at the open or close ms) matches the real rules text in data/markets: the close of the previous day's 12:00 ET candle against the close on the end day. It also matches WP1-C's keying by the noon open ms."
+  },
+  {
+   "ac": "D2 Universe checkpoint rows for every tradable ladder market at each checkpoint (fixtures)",
+   "status": "pass",
+   "command": "probe.py D2 section: a simulated 50h at 30s ticks with 13 ladder markets (8 BTC strikes, Up/Down, 2 ETH, one with strike=None, one next-day market) plus crypto-fast, crypto-hourly and kind='touch' markets; books for only 2 markets",
+   "evidence": "Each of the 13 ladder markets got exactly one row at buckets [24,6,1] (dict equality, no extras or duplicates). There were no rows for the 3 non-ladder markets. Every row's tau_h lies in (bucket-10min, bucket]. Rows carry fair and mid_ex_own (0.5 where a book exists, None where it doesn't). The strike=None market still gets rows with err set. Builder test test_checkpoint_rows_for_every_ladder_market also passes."
+  },
+  {
+   "ac": "D3 Selector: reward term 0 below min size; ties go to the shorter-dated market",
+   "status": "pass",
+   "command": "probe.py D3 section: engine runs with engine.rewards set, plus an exact-tie test with fair_value stubbed identically, in both insertion orders",
+   "evidence": "With reward min_size 50 and quote size 10, income stays exactly 0.04874719939117203 with or without the reward. With quote_size 50 it rises from 0.0487 to 0.2571. In the exact tie (equal incomes 0.027545306122449) the near-dated market is chosen in both insertion orders, and only its intents are emitted. The selector_ranking record carries income, bids, size, reward, markout, tau_h and fee_rate."
+  },
+  {
+   "ac": "D4 Quote engine: spread widens with uncertainty; skew follows inventory; complement p+q<1-margin; each pull rule fires",
+   "status": "pass",
+   "command": "probe.py D4 section (market_intents plus full LadderEngine.on_tick)",
+   "evidence": "As unc goes 0 to 0.08, the spread goes [0.02,0.02,0.04,0.06,0.10]. As vol goes 0, 0.02, 0.05, it goes 0.02, 0.04, 0.06. At engine level, a larger sigma_rel_unc gives a wider spread. Skew: long YES lowers the YES bid and long NO lowers the NO bid at net 10/30/45. Complement: 3000 random holdings >= min_size with random costs and mids gave 3000 complement bids, all with cost + bid < 0.99 and size <= held. Pulls fire on their triggers and the engine emits nothing: close at E-10min and E-1ms; the oracle gap at E, E+1min and E+1h; a book 60,001 ms old; a feed 5,001 ms old. There is no pull at exactly 60,000 / 5,000 ms. A sharp move at 1.05x the independently computed threshold (11.26 bp) pulls and 0.95x does not; a move spread over 20 s (longer than the window) does not. A crossed book pulls with a data_fault record. A reference tick moves the quotes (requote). Minor gap: complement bids apply only to holdings >= min_size (see defects)."
+  },
+  {
+   "ac": "D5 Sizer invariant on 10,000 random intents; never rounds up; refuses sub-minimum",
+   "status": "pass",
+   "command": "probe.py D5 section: 10,000 intents through full LadderEngine.on_tick with random strike/updown markets, tick 0.01/0.001, min_size 1/5/15, random books, DVOL, positions, fills (cost) and quote sizes; floor_to on 200k on-grid and near-grid floats",
+   "evidence": "n=10000 intents, 0 bad. On each one: invariant_ok(q,f,m) from the reason; q == Intent.fair; q = m + 0.3(f-m) to 1e-12; m equals the YES mid_ex_own (or 1 minus it); min_size <= size <= inventory or quote cap; size on the 0.01 grid; price on the tick grid and >= tick; post-only (price < best ask); maker BUY; GTD in (now+2min, end-2min]; complement cost+price < 0.99. floor_to was never above x on 200k on-grid and nextafter-perturbed floats. quote_size 4.99 with min 5 gives no quote. With net=46 and max_inv=50, no YES bid (4 < min 5). taker_cost, kelly, group_cap and taker_shares are checked by builder tests against hand values (fee 1.75c at 0.50, as in role 23's example)."
+  },
+  {
+   "ac": "D6 Book-integrity check flags a crossed complement book",
+   "status": "pass",
+   "command": "probe.py D6 section plus the engine case",
+   "evidence": "book_fault gives 'asks sum 0.9400 < 1' for YES ask 0.42 / NO ask 0.52 and 'bids sum 1.0500 > 1' for bids 0.60/0.45. It gives None for coherent books, including the exact-sum-1 boundary. In the engine, a crossed book gives no intents for that market plus a rate-limited data_fault record of kind book_integrity. ladder_arbs is log-only; the engine emits only maker BUY intents."
+  },
+  {
+   "ac": "D7 Tests in trader/tests/test_ladder.py pass",
+   "status": "pass",
+   "command": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\.venv\\Scripts\\python.exe -m pytest trader/tests/test_ladder.py -q -p no:cacheprovider (from roster/)",
+   "evidence": "19 passed in 5.01s (re-run with -v -rs: 19 passed, 0 skipped). Whole repo: 158 passed in 16.45s."
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "Complement-bid price cap is skipped for holdings below min_size. quotes() applies the p+q<1-margin cap only when held_other >= m.min_size. With a smaller holding (for example a partial maker fill of 3-4.99 shares), the bid on the other outcome is a plain quote with no cap. Reproduced: holding 4 YES at 0.60 with the mid now 0.40, the engine posts a NO bid at 0.59 x 10, so a fill pairs 4 shares at p+q = 1.19 against 1-margin = 0.99. That locks a loss on merge and contradicts the requirement 'holding one outcome bought at p, bid the other at q with p + q < 1 - margin'. The loss is bounded below min_size shares, and paper only.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\engines\\ladder.py",
+   "fix_hint": "In quotes(), when 0 < held_other < min_size and the cost is known, still cap px at 1 - cost[other] - margin (strictly below), keeping the plain size. If the cost is unknown, skip the bid, as the complement path does. Add one test case with a 4-share holding."
+  },
+  {
+   "severity": "minor",
+   "description": "Role 23's invariant is checked only on the YES-side (f, m, q). NO-side intents carry 1-f, 1-mid, 1-q, which under float rounding can break sign/magnitude when |f-mid| <= 4.4e-16. A probe with f within 2 ulps of mid emitted 2717 intents whose parsed reason fails invariant_ok. With real data this can't practically happen (f comes from a CDF, mid is on the tick grid), but the downstream invariant suite would count it as a violation.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\engines\\ladder.py",
+   "fix_hint": "In market_intents, run invariant_ok on the exact (ff, mm, qq) written into each intent's reason before emitting it, or compute the NO q as shrink(1-f, 1-mid)."
+  }
+ ],
+ "rules_check": "Paper only: ladder.py imports only datetime, math, re, zoneinfo, collections.deque, statistics.NormalDist and trader.contracts. There is no network, socket, file, subprocess, signing or order code (grep of imports, open(, http, socket, urllib, requests, websocket, sign, private, submit, send, sqlite came back clean). The engine only returns Intent objects (maker BUY, kind 'maker'); arbs are log-only records. No secrets (grep for api key, secret, private key, passphrase, mnemonic and 0x addresses: no matches). Owned paths: WP1-D changed only trader/engines/ladder.py and trader/tests/test_ladder.py. trader/engines/__init__.py dates from the orchestrator setup (12:12:51, same as trader/tests/__init__.py). The new data/markets snapshot (12:20) matches WP1-C's crawl-when-stale in marketdata.load_markets, not WP1-D. WP1-D wrote no reports, and none were required. contracts.py was not modified: its mtime 12:11:26 predates dispatch.md (12:12) and every WP file; sha256 1c0e3f29...68bf. common.py was not modified (mtime 2026-09-30). Phase 0 research/kappa is imported read-only, and only by the test. Minimal code: one 442-line module and one test file. kelly, taker_cost, group_cap and taker_shares are unused by the maker path, but dispatch requirement 1.12 asks for them and they are tested. Auditor scratch files: only build/phase-1/audit-tmp/WP1-D/{probe.py,edge.py,edge2.py}.",
+ "tests_rerun_output_tail": "trader\\tests\\test_ladder.py ...................                          [100%]\n============================= 19 passed in 5.25s ==============================\n(quiet run: 19 passed in 5.01s; whole repo: 158 passed in 16.45s)",
+ "notes": "Verdict PASS: all of D1-D7 are code-level and verified independently with auditor probes, not only the builder's tests. There are no [ops] criteria in WP1-D. Two minor defects (above) do not block. Observations for WP1-F:\n(a) The selector ranks purely on income per dollar, so a market holding inventory could in principle fall outside max_markets and lose its complement or skewed quotes. My probe could not reproduce this: a cheap complement bid raises that market's income. It is a design note, not a defect.\n(b) With a non-default pull_before_close_ms below about 5 min, expiry = end - 3 min can land under now + 2 min. The kernel's GTD rule would reject it, so it fails closed. The defaults are safe.\n(c) The builder's live dry-run figures (4.6 ms per tick, 24/24 checkpoint rows live, the example quotes) were not reproduced; the scripts were in the builder's scratchpad and are not ACs. A synthetic worst case (158 markets all quotable at tau 6h, 154 strikes in one ladder, so the ladder_arbs O(n^2) scan dominates) measured 46.8 ms per on_tick. Keep this in mind if the loop calls on_tick on every Binance trade.\n(d) The stale_feed check uses ref ts_ms, which WP1-C sets to Binance event time E, so local clock skew over 5 s would pull every quote (or never pull, if the skew runs the other way).\n(e) WP1-F must drain engine.records, call on_fill (and replay it on restart), trip role 02 on data_fault records, and have the human confirm PREREG before it is written, as the builder listed.\nProbe scripts are in C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\build\\phase-1\\audit-tmp\\WP1-D\\ (probe.py: 43/43 OK; edge.py and edge2.py: edge cases)."
+}

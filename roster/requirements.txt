@@ -1,0 +1,11 @@
+numpy
+scipy
+pandas
+duckdb
+pyarrow
+websockets
+httpx
+pytest
+penaltyblog
+eth-account
+psutil==7.2.2  # ops/keeper.py

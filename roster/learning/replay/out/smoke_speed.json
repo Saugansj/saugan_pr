@@ -1,0 +1,68 @@
+{
+ "engine": "speed",
+ "class": "trader.engines.speed.SpeedEngine",
+ "source": "trader/engines/speed.py",
+ "source_sha256": "9f98145a3456ad1c064611b213a1a18334f08e99104df4ce56a04559eb689f2f",
+ "window": [
+  1790778543042,
+  1790778659166
+ ],
+ "rtt_ms": 210.0,
+ "ref_note": "Binance 1s klines for the window, fetched in memory by a public GET (common.get_json)",
+ "label": "exploratory",
+ "events": {
+  "book": 77075,
+  "markets": 1,
+  "msg:dvol": 4,
+  "msg:final": 4,
+  "msg:markets": 1,
+  "msg:pm": 40763,
+  "msg:ref": 470,
+  "ref": 470,
+  "tick": 248,
+  "trade": 343
+ },
+ "ticks": 38992,
+ "tripwire_checks": 5614848,
+ "tripwire_violations": 0,
+ "intents": {},
+ "decisions": {},
+ "orders": 0,
+ "rejected": {},
+ "cancels": 0,
+ "fills": {
+  "maker": 0,
+  "taker": 0,
+  "maker_shares": 0,
+  "taker_shares": 0
+ },
+ "fees": 0,
+ "positions": 0,
+ "stat": {
+  "clusters": 0,
+  "mean": null,
+  "se": null,
+  "sharpe": null
+ },
+ "clusters": [],
+ "random_entry": {
+  "R": 100,
+  "seed": 0,
+  "percentile": null,
+  "baseline_mean": null,
+  "baseline_fees": 0.0,
+  "entries": 0
+ },
+ "trials": 2,
+ "trial_family": "replay:btc-speed",
+ "b1": {
+  "t": 1790778601104,
+  "tokens": 124,
+  "equal": true
+ },
+ "detector_events": 0,
+ "max_5s_move_bp": {
+  "BTC": 7.374969764450717,
+  "ETH": 9.068772138871985
+ }
+}

@@ -1,0 +1,118 @@
+{
+ "verdict": "PASS_WITH_OPERATIONAL_PENDING",
+ "ac_results": [
+  {
+   "ac": "A1 health_failures: [] when healthy; each single failing input makes the list non-empty and names its check",
+   "status": "pass",
+   "command": "pytest tests/phase2/test_heartbeat.py -q (test_a1_healthy_and_boundaries_pass, test_a1_each_check_fails_alone x14); read trader/live/heartbeat.py:28-56; build/phase-2/audit-tmp/WP2-A/probe.py",
+   "evidence": "All 14 parametrized cases give exactly one entry, prefixed with the check name (tick, user_ws, reconcile, book stale, book missing, unknown-status order with no book, feed stale, unknown feed over 10 s, journal, audit, clock over +1 s, clock under -1 s, clock None, halted). The boundaries (2,000 ms tick, -1,000 ms offset, 30,000 ms book, 10,000 ms unknown feed) pass. STALE_MS and LIVE are imported from trader.kernel, not copied. In my probe, NaN or None tick, NaN feed age, NaN clock and NaN book timestamp all fail; a journaled order with no book fails; a canceled order needs no book; three simultaneous failures give three entries."
+  },
+  {
+   "ac": "A2 sends only when failures is empty, chains heartbeat_id, returns False without raising when send raises",
+   "status": "pass",
+   "command": "test_a2_sends_only_when_healthy_and_chains_ids; probe.py; read heartbeat.py:72-88",
+   "evidence": "send got ids ['', 'hb1', 'hb2']. A tick with failures returns False and makes no call. A ConnectionError gives False, errors == 1 and last_error 'send: ConnectionError'. In my probe, a ZeroDivisionError from send gives False, a send returning None still counts as sent and keeps the id '', and a failures list containing only 'halted' blocks the send."
+  },
+  {
+   "ac": "A3 halt cadence: cancel_all at 0, 2, 4 s until confirmed, then stops; unconfirmed latches stopped at 10 s, no heartbeat until rearm()",
+   "status": "pass",
+   "command": "test_a3_* (4 tests); probe.py; read heartbeat.py:90-113",
+   "evidence": "cancels == [0, 2000, 4000], and confirm was called on every 0.5 s call until True, then never again. With confirmation never coming: cancels at 0, 2, 4, 6, 8, 10 s and stopped latched at exactly 10,000 ms. A healthy end_of_tick then returns False with send never called, and after rearm() it sends ''. A cancel_all exception counts as not confirmed. In my probe, after the latch cancel_all keeps retrying every 2 s (11 calls over 0-20 s), and a raising confirm counts as not confirmed."
+  },
+  {
+   "ac": "A4 freeze, negative control and network cut on a fake venue (10 s auto-cancel, simulated clock)",
+   "status": "pass",
+   "command": "test_a4_* (6 tests); .venv\\Scripts\\python.exe -m tests.phase2.test_heartbeat",
+   "evidence": "Re-run output: freeze gives passed=True, zero_after_ms 9000 (14000 with a 15 s venue), heartbeats_sent 5, open_at_freeze 3. The negative control gives passed=False and zero_after_ms None. Network cut gives passed=True, zero_after_ms 9000, send_errors 18 and heartbeats_sent_after_cut 0 (14000 ms and 28 errors with a 15 s venue). With nothing open at the freeze, the drill returns passed=False. These match the report exactly."
+  },
+  {
+   "ac": "A5 dead-man: no URL means no call; at most one ping per 60 s, none on an unsent tick; errors swallowed; URL never in logs, reprs or returns",
+   "status": "pass",
+   "command": "test_a5_deadman; probe.py (a getter whose exception message contains the URL, root logger at DEBUG)",
+   "evidence": "Pings at 0, 61 and 121 s only, as (url, 5). With no env URL there are no calls. In my probe an empty ROSTER_DEADMAN_URL means disabled. With a getter raising OSError(f'boom {url}'), errors is 1 and neither the URL nor its path appears in the log, repr, str or return value; only the host and the exception type are logged."
+  },
+  {
+   "ac": "A6 SNTP with a fake socket: known offset and delay within 1 ms; Kiss-o'-Death rejected; measure() is None when all servers fail",
+   "status": "pass",
+   "command": "test_a6_offset_from_packet_and_rejects, test_a6_sntp_query_and_measure; probe.py; read clock.py:35-76",
+   "evidence": "offset 146 and delay 8 within 1 ms. Stratum 0, mode 3 and a zero transmit time each raise ValueError. A reply that does not echo our transmit time is rejected. measure() gives the median of the servers that answered (200.5) and None when all fail, including with the default servers. In my probe, leap indicator 3 and a 47-byte packet are also rejected. The formula matches the dispatch."
+  },
+  {
+   "ac": "A7 clock gate with a real RiskKernel: 50/100/150/1000/1500 give A/A/R/R/H by magnitude; None or stale gives REDUCING; CLOB offset of 2.5 s gives HALTED; one trip per rise from a privileged source; REDUCING rejects risk-increasing intents, HALTED rejects all",
+   "status": "pass",
+   "command": "test_a7_* (4 tests, with real trader.kernel.RiskKernel); -m tests.phase2.test_heartbeat (clock-skew rows); probe.py",
+   "evidence": "Levels are as specified and symmetric. None, NaN, a missing timestamp or a measurement 600,001 ms old gives REDUCING (exactly 600,000 ms is still fresh). CLOB 2,500 gives HALTED; -2,000 gives ACTIVE. Two trips, REDUCING then HALTED, both with source 'kernel' (in PRIVILEGED). In REDUCING a BUY gets 'REDUCING: only exposure-reducing orders'; in HALTED both BUY and SELL get 'HALTED: no new orders'. Once the clock recovers the kernel stays HALTED. Skew drill: 20 ms ACTIVE/ACTIVE, 250 ms REDUCING/REDUCING, 1500 ms HALTED/HALTED, 20 ms ACTIVE/HALTED. My probe's strict boundaries hold (1000 gives R, 1000.001 gives H, inf gives R). One probe expectation of mine was wrong: a later rise from A to R is a new rise, so the extra trip there follows the spec."
+  },
+  {
+   "ac": "A8 failed audit write: audit_ok=False and no heartbeat that tick",
+   "status": "pass",
+   "command": "test_a8_failed_audit_write_stops_heartbeat; read trader/audit.py:92-110",
+   "evidence": "A real AuditLog whose path is replaced by a directory raises AuditWriteError, so audit_ok=False. health_failures returns exactly ['audit: last audit write failed'], end_of_tick returns False and send is never called. After k.trip(..., 'audit') the kernel is HALTED and on_halted runs, still with no heartbeat."
+  },
+  {
+   "ac": "A9 kill_all.py: missing flag gives exit 2 with zero transport calls; POLY_PRIVATE_KEY gives exit 3; fake server signature equals the vector and zero is confirmed (exit 0); a venue that never empties gives exit 1 within 15 s simulated; no credential values printed; stdlib-only imports",
+   "status": "pass",
+   "command": "test_a9_* (5 tests); CLI runs with fake env values (no vars gives exit 3; fake L2 with no flags gives exit 2; --live with ROSTER_LIVE=1 and the shipped live.json {\"live\": false} gives exit 2; POLY_PRIVATE_KEY set gives exit 3); grep -nE \"^(import|from) \" tools/live_tools/kill_all.py; probe.py; compared with research/spike/.venv py_clob_client_v2 client.py",
+   "evidence": "Six dry-run cases exit 2 with calls == []. The loopback fake saw DELETE /cancel-all with POLY_SIGNATURE == qFXxB7_..., then a paged GET /data/orders, then exit 0. A sticky venue gives 8 DELETEs and exit 1 at 14 s simulated. capsys shows no credential values. Imports are argparse, base64, hashlib, hmac, json, os, pathlib, sys, time and urllib.* only. In my probe: both orchestrator vectors reproduce through kill_all.signature; configs {\"live\":1}, [true], malformed JSON and {\"LIVE\":true} all give a dry run; ROSTER_LIVE values '1 ', '01', 'yes' and 'True' give a dry run; hosts http://10.0.0.1, ftp:, file: and http://127.0.0.1.evil.com give exit 3; a transport that raises with credentials in its message gives exit 1 with nothing leaked. The SDK signs GET /data/orders over the path only and uses cursors MA== and LTE=, which kill_all matches."
+  },
+  {
+   "ac": "A10 tests pass with the autouse no-network fixture; no secrets in the owned paths",
+   "status": "pass",
+   "command": "pytest (fixture in place); build/phase-2/audit-tmp/WP2-A/strict_nonet.py (also blocks getaddrinfo, connect_ex); grep -nE '0x[0-9a-fA-F]{64}' and grep -niE '(secret|passphrase|api_key)\\w*[:=]\\s*[\\'\\\"]...' over the 5 owned paths",
+   "evidence": "45 passed under the stricter DNS and connect block too: 52 socket calls, none off loopback. The 0x+64-hex grep finds nothing, and the assigned secret, passphrase and api_key literal grep finds nothing. The only secret in the tests is the published orchestrator test-vector secret, built with base64.b64encode(b'roster-phase2-test-secret-000000'), which I confirmed equals the dispatch vector."
+  },
+  {
+   "ac": "A11 report covers the A4, A7, A8 and A9 drills with results and ends with How to reproduce",
+   "status": "pass",
+   "command": "read reports/phase2_safety.md; compared against the drill printer output; optional public smoke: clock.sntp_offset x3, measure(), clob_offset_ms()",
+   "evidence": "The drill table covers freeze (and the 15 s venue), negative control, network cut, halt cadence, clock skew, clock thresholds, failed audit write, and the kill-script dry run, refusals, fake-server exit 0 and exit 1. Every number matches my re-run. Its last section is '## How to reproduce'. The smoke finding holds: my run gave 243-349 ms (median 252 ms, REDUCING) and CLOB +715 ms, consistent with the reported ~316-353 ms and +912 ms, so it is not fabricated."
+  },
+  {
+   "ac": "A12 tests in tests/phase2/test_heartbeat.py pass",
+   "status": "pass",
+   "command": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\.venv\\Scripts\\python.exe -m pytest tests/phase2/test_heartbeat.py -q",
+   "evidence": "45 passed in 1.79s (45 collected)"
+  },
+  {
+   "ac": "A13 [ops] freeze drill on the real venue",
+   "status": "operational_pending",
+   "command": "n/a",
+   "evidence": "Needs keys, the live venue and resting post-only orders; freeze_drill is injectable and ready for it."
+  },
+  {
+   "ac": "A14 [ops] network-cut drill on the real venue",
+   "status": "operational_pending",
+   "command": "n/a",
+   "evidence": "Needs keys and the live venue."
+  },
+  {
+   "ac": "A15 [ops] kill script live from the home PC",
+   "status": "operational_pending",
+   "command": "n/a",
+   "evidence": "Needs L2 credentials on the home PC."
+  },
+  {
+   "ac": "A16 [ops] external dead-man with an observed alert",
+   "status": "operational_pending",
+   "command": "n/a",
+   "evidence": "Needs a healthchecks.io check and ROSTER_DEADMAN_URL on the VM."
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "kill_all.py's retry loop catches only (OSError, ValueError). A protocol error from urllib/http.client that is neither (for example http.client.IncompleteRead or BadStatusLine, both HTTPException subclasses of Exception) escapes main(). The kill switch then crashes after its first request instead of retrying cancel-all every 2 s for up to 15 s. The interpreter still exits 1 (not confirmed), so there is no false confirmation and no credential leak. Reproduced with build/phase-2/audit-tmp/WP2-A/truncated.py: a loopback server sending a truncated body gives an uncaught IncompleteRead after 1 request.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tools\\live_tools\\kill_all.py",
+   "fix_hint": "Line 124: catch (OSError, ValueError, http.client.HTTPException) (stdlib), or Exception, printing only type(e).__name__ as now."
+  },
+  {
+   "severity": "minor",
+   "description": "clock_gate only checks that offset_ms and clob_offset_ms are finite, not measured_ms. A NaN measured_ms makes `now_ms - measured_ms > max_age_ms` False, so the measurement counts as fresh and clock_gate(10, nan, now) returns ACTIVE instead of failing cautious (REDUCING). This only happens if a caller passes a corrupt timestamp.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\live\\clock.py",
+   "fix_hint": "Line 95: test `_finite(measured_ms) is None` instead of `measured_ms is None`."
+  }
+ ],
+ "rules_check": "Owned paths only: the WP2-A files are trader/live/heartbeat.py, clock.py, tools/live_tools/kill_all.py, tests/phase2/test_heartbeat.py and reports/phase2_safety.md (mtimes 14:48 to 17:42). I found no stray WP2-A files elsewhere; other recent changes belong to parallel WPs. The orchestrator __init__.py files are untouched (0 bytes, 14:21:50). Contracts: trader/contracts.py sha256 1c0e3f29...68bf matches the baseline recorded in the Phase 1 audit (WP1-A.audit.json). advisor/contracts.py (14:21:48), common.py, trader/kernel.py and trader/audit.py all predate the WP2-A files. Imports use only allowed stable names (trader.kernel LIVE, STALE_MS, PRIVILEGED, RiskKernel; trader.contracts; common) and no other WP2 package. Real orders and authenticated calls: none in heartbeat.py or clock.py; their only network paths are the env-gated DeadMan GET, public SNTP UDP and public CLOB GET /time. kill_all.py's authenticated DELETE /cancel-all and GET /data/orders are reachable only from main() after the three-flag check (--live, ROSTER_LIVE == '1' exactly, config 'live' is True as a JSON boolean; missing file means off), which runs on every invocation. Credentials come from os.environ at run time, and only names, counts, statuses and exception type names are printed. POLY_PRIVATE_KEY refuses even when empty. No LLM or paid API calls. Unit tests need no network: verified with a stricter DNS-blocking runner. No secrets in the owned paths (both greps clean). Look-ahead, size rounding and AI-output rules do not apply to this WP. Report ends with How to reproduce. Code is minimal: three compact modules, injected callables, no speculative abstractions.",
+ "tests_rerun_output_tail": ".............................................                            [100%]\n45 passed in 1.79s\n(strict no-net rerun, DNS + connect blocked off-loopback: 45 passed in 1.83s; socket calls: 52 off-loopback: [])",
+ "notes": "WP2-A passes with operational items pending: A1 to A12 all pass, A13 to A16 are [ops], and I found two minor defects (kill_all aborts its retry loop on an http.client protocol error; clock_gate treats a NaN measured_ms as fresh).\n\nI verified every builder claim myself:\n- The drill numbers in the report (9,000 and 14,000 ms, 18 send errors, the clock-skew rows) match a fresh run of `python -m tests.phase2.test_heartbeat`.\n- The kill-script CLI exit codes (3 with no vars, 2 for a dry run with fake vars, 2 with --live and ROSTER_LIVE=1 but the shipped `{\"live\": false}`, 3 with POLY_PRIVATE_KEY) match.\n- Both HMAC vectors reproduce.\n- kill_all's request shape matches the SDK in research/spike/.venv.\n\nTwo items are noted but not counted as defects:\n- **Helpers without their own guard check:** open_count() and http() in kill_all.py are module-level helpers with no guard check of their own. Only main() calls them, after the guard, and nothing else in the repo imports them.\n- **Credentials checked before guard flags:** a dry run without L2 variables exits 3 rather than 2, as the builder disclosed. The dispatch allows this reading.\n\nWiring caution for later: HeartbeatWarden.end_of_tick ends a halt episode when the failures list has no 'halted' entry. The loop must build failures from health_failures(..., kernel.state), as the wiring note says. If it doesn't, on_halted would cancel on every tick and never latch.\n\nOptional public smoke (SNTP and CLOB /time, unauthenticated): this PC reads about +250 ms (REDUCING), which confirms the report's finding that the VM must be time-synced.\n\nScratch files are in C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\build\\phase-2\\audit-tmp\\WP2-A\\ (strict_nonet.py, probe.py, truncated.py, plus temp config dirs). I modified no code-base files and ran my scripts with PYTHONDONTWRITEBYTECODE=1.\n\nHow to reproduce (from the code root):\n1. `.venv\\Scripts\\python.exe -m pytest tests/phase2/test_heartbeat.py -q`\n2. `.venv\\Scripts\\python.exe build\\phase-2\\audit-tmp\\WP2-A\\strict_nonet.py`\n3. Set `PYTHONPATH=.` and run `.venv\\Scripts\\python.exe build\\phase-2\\audit-tmp\\WP2-A\\probe.py`\n4. Same, with `truncated.py`."
+}

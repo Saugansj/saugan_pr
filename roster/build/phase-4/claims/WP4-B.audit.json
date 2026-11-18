@@ -1,0 +1,88 @@
+{
+ "verdict": "PASS_WITH_OPERATIONAL_PENDING",
+ "ac_results": [
+  {
+   "ac": "B1 All 7 penaltyblog methods run on a fixture 1X2, each returns a probability vector summing to 1",
+   "status": "pass",
+   "command": ".venv\\Scripts\\python.exe -m pytest tests/phase4/test_sports_fair.py -q (test_all_seven_methods_give_probability_vectors); plus build/phase-4/audit-tmp/WP4-B/probe.py on 3 extra fixtures",
+   "evidence": "Test passes. The probe ran F.devig_odds on 3 fixtures ({2.1,3.4,3.75}, {1.2,7,15}, {3.1,3.2,2.4}). All 7 methods returned sums of 1 +/- 1e-12. METHODS comes from research/devig/devig.py, which reads penaltyblog's ImpliedMethod enum (7 members). Odds <= 1 or NaN return None."
+  },
+  {
+   "ac": "B2 Method choice uses training seasons only (corrupting held-out rows leaves choice unchanged), scores against match outcomes, parameter set state 'candidate'",
+   "status": "pass",
+   "command": "Read sports/fair.py choose_methods (lines 82-110); ran build/phase-4/audit-tmp/WP4-B/b2_real.py on the real matches.parquet with every 2023/24-2025/26 row's PSH/PSD/PSA replaced by uniform(1.1,15) noise and FTR set to 'D'",
+   "evidence": "On the corrupted real data the paramset is the same as the report's: version ee7d3af0e9a5, params D1 multiplicative, E0 odds_ratio, F1 power, I1 power, SP1 odds_ratio, state candidate. train_ll and train_n are unchanged (D1 0.982738/3365 ...) and held_ll changed (about 1.26-1.60). The code scores log_loss(probs, FTR) on OPENING columns only, with train = season < min(held_out). Closing columns are never read by the choice. The synthetic unit test also passes."
+  },
+  {
+   "ac": "B3 devig-report writes reports/phase4_devig.md with every listed column for E0, SP1, D1, I1, F1, ending with 'How to reproduce'",
+   "status": "pass",
+   "command": "build/phase-4/audit-tmp/WP4-B/regen.py (calls F.devig_report() and writes only to audit-tmp, 87.7 s); diff reports/phase4_devig.md audit-tmp/WP4-B/phase4_devig.regen.md",
+   "evidence": "The only diff is the 'Generated <time>' line, so the numbers are reproducible and not fabricated. The table has league, method, train_ll, held_ll, held_vs_multiplicative, train_n, held_n, train_seasons and phase0_closing_choice for D1, E0, F1, I1 and SP1. The bold note says PS* stops in January 2026 and gives the last date per league. The last section is '## How to reproduce'. The hard-coded PHASE0_CLOSING matches reports/devig_report.md. The training log losses match Phase 0's opening-odds table exactly (independent code path)."
+  },
+  {
+   "ac": "B4 sigma_fair non-decreasing in age over random ages; fair refuses with no sharp snapshot or one past max_age",
+   "status": "pass",
+   "command": "pytest (test_sigma_fair_non_decreasing_in_age, test_fair_refuses_without_a_fresh_sharp_snapshot); read fair.py lines 115-143; probe.py",
+   "evidence": "sigma = sqrt(s0^2 + k*max(0,age)/HOUR), which is monotone for k >= 0. The test checks 2000 sorted random ages under 3 param sets. fair() returns fair=None, reason 'no sharp reference' for None, [], age max_age+1, football-data PSC, another event and Kalshi-only input, and exactly max_age is still accepted. Caveat: a snapshot dated after now_ms is treated as age 0 (minor defect below)."
+  },
+  {
+   "ac": "B5 Quote gate: none fresh refuse; one fresh outside 1 sigma refuse; all within allow; stale outlier ignored",
+   "status": "pass",
+   "command": "pytest test_quote_gate; read fair.py lines 179-193; probe.py edge cases",
+   "evidence": "The test covers every case. The probe shows NaN sigma -> (False,'no fair value') and NaN fair -> refuse (NaN counts as outside). Stale sources are filtered by now_ms - obs_ms <= max_age_ms before the 1-sigma check."
+  },
+  {
+   "ac": "B6 Consensus = median of per-book devigged probabilities; H, D, A fair values sum to 1",
+   "status": "pass",
+   "command": "pytest test_consensus_is_median_of_per_book_devig_and_fair_sums_to_one; read continuous_sources lines 157-176",
+   "evidence": "For odds-api, p is statistics.median of the per-book odds_ratio devig (3 books). Superseded and stale records are excluded and Kalshi probs pass through as given. fair(H)+fair(D)+fair(A) = 1 within 1e-9."
+  },
+  {
+   "ac": "B7 Universe checkpoints: one row per mapped market per label, untraded included, each with cluster_id and mid_ex_own",
+   "status": "pass",
+   "command": "pytest test_checkpoint_rows_one_per_mapped_market_traded_or_not; probe.py writes rows into the REAL trader.ledger.Ledger in a TemporaryDirectory",
+   "evidence": "5 maps give 5 rows in order, and markets with no sharp snapshot still produce rows (fair None with a reason). mid_ex_own comes from Book.mid_ex_own(). The real Ledger accepted 3 forecasts rows (as_of returned 3) and rejected a row with cluster_id=None ('forecasts rows need a cluster_id')."
+  },
+  {
+   "ac": "B8 Pull drills fire and clear; lineup pull holds until newer sharp snapshot; sticky caution pull persists past expires_ms",
+   "status": "pass",
+   "command": "pytest test_pull_drills_each_rule_fires_and_clears, test_lineup_pull_holds_until_a_newer_sharp_snapshot, test_caution_pulls_and_fresh_observation_resume; read sports/pulls.py; probe.py",
+   "evidence": "Each rule fires and clears: start-5min, changed start (>60s), early in_progress, postponed, delayed, suspended, cancelled, missing game state, stale or missing polymarket and sports feed ages, stale sharp, gate refused or None. Lineup: obs_ms <= lineup_ms holds the pull and lineup+1 clears it. A sticky pull past expires_ms still pulls (probe confirmed) and ends only on a later 'none' for the same (role, scope). Unknown and 'final' statuses pull (fail closed)."
+  },
+  {
+   "ac": "B9 Soccer pre-registration dict has statistic, alpha, n clusters, PASS rule, futility rule, guardrail",
+   "status": "pass",
+   "command": "pytest test_soccer_preregistration; probe.py calls real Ledger.preregister(SOCCER_PREREG) twice",
+   "evidence": "name soccer-maker. The statistic covers fee-net 5m markout + rebate + allocated reward against mid_ex_own, and the cluster is one match. alpha 0.0228, n 100 in shadow, PASS at mean > 2 cluster-robust SE, futility (-1 SE, 50), guardrail brier/log_loss margin 0.005. The real Ledger stored it, and re-registering the same dict was a no-op."
+  },
+  {
+   "ac": "B10 pytest tests/phase4/test_sports_fair.py -q passes with autouse socket guard",
+   "status": "pass",
+   "command": ".venv\\Scripts\\python.exe -m pytest tests/phase4/test_sports_fair.py -q",
+   "evidence": "12 passed in 13.08s. The autouse no_network fixture (lines 25-29) monkeypatches socket.socket.connect to raise. The tests use only synthetic data and write nothing."
+  },
+  {
+   "ac": "B11 [ops] Soccer through Loop B (replay, shadow >= 100 clusters, canary, token); source weighting by past accuracy",
+   "status": "operational_pending",
+   "command": "n/a (needs SportsGameOdds/odds-api.io keys, the running loop, ledger history and calendar time)",
+   "evidence": "Not buildable on this machine; correctly marked [ops] by the builder and the dispatch."
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "Look-ahead / fail-open on future-dated snapshots. fair() picks max(obs_ms) and clamps age with max(0, now_ms - obs_ms), and continuous_sources() keeps any record with now_ms - obs_ms <= max_age (negative ages pass). A snapshot observed after now_ms is therefore used as perfectly fresh. Probe: a sharp snapshot at now+1h is chosen over one at now-2h with age 0 and sigma=s0, and a Kalshi record at now+1h alone makes quote_allowed return (True,'ok'). Live, this only matters under clock skew or a misparsed vendor timestamp, but such a snapshot then disables the max_age refusal and the pulls' 'no fresh sharp reference' and lineup checks for that event. In a Loop B replay, checkpoint_rows(…, ts_ms) would use prices from after ts_ms and bias the pre-registered Brier/log-loss guardrail. No current AC requires as-of filtering and no replay caller exists yet, so this is minor.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\sports\\fair.py",
+   "fix_hint": "In fair() and continuous_sources(), ignore records with obs_ms > now_ms (or recv_ms > now_ms for replay availability), e.g. add `and s['obs_ms'] <= now_ms` to the filters, and add one test case."
+  },
+  {
+   "severity": "minor",
+   "description": "A sticky caution pull (resume_requires_fresh_observation=True) also ends when a later 'shrink' signal, or a later non-sticky 'pull' that then expires, arrives for the same (role, scope). The probe [sticky, shrink] returned []. The dispatch says it ends only when replaced by action 'none'. WP4-D's sentinel only emits sticky 'pull' or 'none', so this cannot happen today.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\sports\\pulls.py",
+   "fix_hint": "When the current signal for (role, scope) is not 'none' and an earlier signal in that key was a sticky pull, keep the pull, i.e. only an action=='none' signal clears a sticky pull."
+  }
+ ],
+ "rules_check": "Owned paths: the only WP4-B files are sports/fair.py, sports/pulls.py, tests/phase4/test_sports_fair.py and reports/phase4_devig.md (find over the 14:22-14:50 window). Every other file touched in that window belongs to other packages (advisor/*, learning/*, phase-3, trader/growth, trader/live). Contracts: trader/contracts.py (12:11), advisor/contracts.py (14:21:48, same time as the scaffolded __init__ files) and common.py (Sep 30) all have mtimes before the builder's files (14:38-14:41). There is no baseline hash, so I recorded sha256 for each: trader/contracts.py 1c0e3f29..., advisor/contracts.py cd19a7dc..., common.py e1fea022.... Neither module has any network, HTTP, env-var, credential, router, order, sign or cancel code (grep), and there are no LLM or paid calls. Imports are stdlib, numpy, pandas, penaltyblog, common and the read-only research.devig. The tests need no network (autouse socket guard) and write no files. No size or edge logic exists, and AI cautions can only add pull reasons (shrink is ignored here). No secrets. The report ends with '## How to reproduce'. Hard-coded PHASE0_CLOSING matches reports/devig_report.md. Code is minimal (304 + 71 lines, one test file).",
+ "tests_rerun_output_tail": "............                                                             [100%]\n12 passed in 13.08s",
+ "notes": "I wrote scratch files only under C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\build\\phase-4\\audit-tmp\\WP4-B\\: regen.py, phase4_devig.regen.md, probe.py and b2_real.py. The probe's Ledger used a TemporaryDirectory. The regenerated report differs from C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase4_devig.md only in its timestamp line. The real-data B2 corruption run reproduced paramset version ee7d3af0e9a5. Not defects: quote_allowed allows anything when sigma is inf, but sigma_fair is always finite; a source exactly 1 sigma away can refuse because of float rounding; pull_reasons checks game-state staleness by feed age only (per dispatch), and WP4-A's cancel_signal covers the age of each game-state record. Both minor defects are worth fixing before Loop B replay wiring.\n\nHow to reproduce: from C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster run `.venv\\Scripts\\python.exe -m pytest tests/phase4/test_sports_fair.py -q`, then `.venv\\Scripts\\python.exe build/phase-4/audit-tmp/WP4-B/probe.py`, `.venv\\Scripts\\python.exe build/phase-4/audit-tmp/WP4-B/b2_real.py` and `.venv\\Scripts\\python.exe build/phase-4/audit-tmp/WP4-B/regen.py`, then diff reports/phase4_devig.md against build/phase-4/audit-tmp/WP4-B/phase4_devig.regen.md."
+}

@@ -1,0 +1,78 @@
+{
+ "summary": "WP3-C is code complete and the tests pass. The previous builder had finished most of trader/growth/universe.py but had written no tests and no report. I kept its work and fixed four real problems:\n1. Many year-end touch markets got no window start, because their rules give an explicit ET start date (\"between November 24, 2025, 14:00 and ...\") instead of the creation clause. The smoke found 67 of these; after the fix, 0.\n2. A slug-based window start could be a year off if Gamma names a year-crossing week by its start year. It now has to fit the market's end, and returns None when it doesn't.\n3. For touch markets, the source is now always checked: the rules must name the High field for an up-touch and the Low field for a down-touch.\n4. Entries now carry mode = \"crypto-term\", and accepts() checks it. Before this, the baseline would also have accepted BTC/ETH hourly and 5m/15m Up/Down markets, which Phase 1's ladder doesn't trade.\nI wrote tests/phase3/test_universe.py (41 tests) and reports/phase3_universe.md. I re-ran the public read-only smoke against Gamma and Deribit.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\growth\\universe.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase3\\test_universe.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase3_universe.md"
+ ],
+ "commands_run": [
+  ".venv\\Scripts\\python.exe -m pytest tests/phase3/test_universe.py -q",
+  ".venv\\Scripts\\python.exe -m pytest tests/phase3 -q",
+  "PYTHONIOENCODING=utf-8 .venv\\Scripts\\python.exe -m trader.growth.universe --smoke (public Gamma/Deribit GETs, run 3 times)",
+  "public Gamma GETs of touch-event rules text (before-2027, weekly) and of closed touch events around 2026-01-01, to confirm slug shapes",
+  "grep for urllib|http.client|httpx|websockets|socket|get_json and for py_clob_client|eth_account|POST|api_key|secret|os.environ in the module and the test file"
+ ],
+ "tests_passed": true,
+ "test_output_tail": "tests/phase3/test_universe.py: 41 passed in 0.89s\ntests/phase3 (all four WPs): 93 passed in 15.27s",
+ "ac_self_check": [
+  {
+   "ac": "C1 mode_of_ext matches crawler.mode_of on the latest snapshot; classifies SOL/XRP/touch fixtures; None for unrelated slugs",
+   "status": "met",
+   "evidence": "test_snapshot_slugs_match_crawler_mode ran on the latest data/markets snapshot (226 slugs), not skipped. test_mode_of_ext_fixtures covers 26 slugs: SOL/XRP strike and Up/Down, the day/week/month/year touch shapes, and Nones (sol-updown-5m, SOL hourly, price-on, ethbtc, slugs without a year, dogecoin, sports). The live smoke found 0 BTC/ETH mismatches across 1882 open events."
+  },
+  {
+   "ac": "C2 market_info_ext: kind/strike/asset/event_group/source_id for SOL/XRP strike and Up/Down and touch-up/down; None on a missing field; BTC/ETH equals marketdata.market_info",
+   "status": "met",
+   "evidence": "test_market_info_ext_new_templates (7 fixtures), test_market_info_ext_none_on_missing_fields, test_btc_eth_rows_match_marketdata (fixtures plus every classified snapshot row). The smoke built a MarketInfo for all 426 open new-template markets: 0 None, 0 with an empty source_id, 0 touch markets without a window start."
+  },
+  {
+   "ac": "C3 realised sigma within 10% on seeded GBM (sigma 0.6, at least 1 day of 1m bars); too few bars gives None; DVOL asset gives ladder.sigma_q(dvol)",
+   "status": "met",
+   "evidence": "test_realized_sigma_on_synthetic_gbm: 3 seeds, 1441 bars each, plus a check that only the last 1440 bars count. test_sigma_q_none_and_dvol: 719 bars gives None, 720 gives a value, and BTC/ETH return sigma_q(dvol)."
+  },
+  {
+   "ac": "C4 baseline accepts BTC/ETH strike and Up/Down at tau <= 24h and rejects SOL, XRP, touch and tau > 24h; a band_z entry rejects strikes outside the band",
+   "status": "met",
+   "evidence": "test_baseline_entry also rejects tau <= 0 and hourly/fast modes. test_band_z_entry: strikes at 0.95x the band are accepted and at 1.05x rejected, on both sides; a missing sigma or S fails closed."
+  },
+  {
+   "ac": "C5 every non-baseline entry is a candidate with loop_b True and a complete, uniquely named pre-registration",
+   "status": "met",
+   "evidence": "test_additions_are_candidates_with_own_prereg checks the fields, the 4 unique names, the REGISTRY states and the SOL/XRP asset states, then registers and preregisters everything into a temporary Ledger."
+  },
+  {
+   "ac": "C6 cluster_id union-find cases",
+   "status": "met",
+   "evidence": "test_cluster_id covers: three assets at one instant give one cluster; SOL below 0.3 to both BTC and ETH gets its own ':SOL' cluster; below 0.3 to one and 0.3 to the other merges; different instants differ; NaN and unmeasured pairs merge."
+  },
+  {
+   "ac": "C7 reports/phase3_universe.md has the asset and entry tables, what each entry needs, smoke results, and ends with How to reproduce",
+   "status": "met",
+   "evidence": "The report has these sections plus slug shapes, findings/gaps and wiring; its last section is 'How to reproduce'."
+  },
+  {
+   "ac": "C8 Rules check R1-R4",
+   "status": "met",
+   "evidence": "R1: only the three owned paths were created or edited. R2: network names appear only inside _smoke (lines 236+) under __main__ --smoke; the tests never call it. R3: grep for py_clob_client/eth_account/POST/api_key/secret/os.environ finds nothing. R4: ladder/marketdata helpers are imported, not copied; one test file; the report ends with How to reproduce."
+  },
+  {
+   "ac": "C9 tests in tests/phase3/test_universe.py pass",
+   "status": "met",
+   "evidence": "41 passed."
+  },
+  {
+   "ac": "C10 [ops] each addition goes through Loop B with its own pre-registered test; kappa/vol for SOL/XRP fitted on recorded data; clearances signed",
+   "status": "operational_pending",
+   "evidence": "Needs recorded SOL/XRP data, replay, shadow and canary time, and the human token and clearances. The per-entry prerequisites are listed in the report."
+  }
+ ],
+ "key_results": "- **Smoke (2026-10-01 12:23Z, public GETs only):** 1882 open events. Every one of the 426 open SOL/XRP/touch markets got a MarketInfo with a source_id; touch markets also got a window start. SOL: 77 strike, 2 Up/Down, 63 touch markets. XRP: 77 strike, 2 Up/Down, 58 touch. BTC: 79 touch. ETH: 68 touch.\n- **DVOL:** BTC 35.97 and ETH 49.85. SOL and XRP have no DVOL, so they use realized vol.\n- **Window-start fix:** 67 year-end touch markets give an explicit ET start date in their rules. Before the fix none of them got a window start; now all do.",
+ "wiring_notes": "- **Crawler:** recorder.crawler.SLUG_MODE adopts SLUG_MODE_EXT (call mode_of_ext(slug)[0]), and the crawler also queries the solana and xrp Gamma tags.\n- **Loader:** marketdata.load_markets maps rows with market_info_ext, which is identical to market_info for BTC/ETH.\n- **Feeds:** marketdata subscribes to ASSETS[a]['symbol'] and keeps each touch window's running 1m high/low from window_start_ms(row) in ref[asset]['high'/'low']. For SOL/XRP it sets ref[asset]['sigma_q'] = sigma_q_for(asset, ref, closes_1m).\n- **Kernel:** STRATEGIES[...]['sources'] gains binance:SOL/USDT and binance:XRP/USDT, and the cross-instant stress cap adds XRP.\n- **Selector and scorer:** role 16's selector keeps a market only if accepts(entry, m, S, sigma, now) holds for an entry whose universe-<id> registry version is live; the baseline is always on. The scorer uses cluster_id(m, measured_corr, assets_at_instant).\n- **Ledger:** write REGISTRY and each PREREG to the ledger once, before that entry's data is analysed.\n- **Wide strikes:** the btc-eth-wide-strikes entry also needs ladder.max_tau_h raised and kappa refit for tau > 24h.",
+ "open_issues": [
+  "Assumed, not verified: the slug year of a weekly touch window that crosses a year is the week's end year. No live example exists, and the closed 2025/26 week had no year in its slug. If Gamma uses the start year, window_start_ms fails closed (returns None) rather than giving a wrong start.",
+  "Year-end touch windows can start as early as 2025-11-24. Their running high/low needs a kline backfill longer than the live 1m stream, which is a wiring task.",
+  "MarketInfo has no window-start field (a known contract gap). window_start_ms reads it from the crawler row instead.",
+  "SOL/XRP touch markets are classified but no entry accepts them; that is by design per the dispatch. Weekly, monthly and year-end touch markets have tau > 24h, so btc-eth-touch doesn't accept them until kappa is refit for tau > 24h.",
+  "The crawler's 8-day crypto-term horizon doesn't reach the monthly and year-end touch windows. That matters only for recording them."
+ ]
+}

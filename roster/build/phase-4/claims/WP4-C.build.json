@@ -1,0 +1,98 @@
+{
+ "summary": "WP4-C is built: the LLM gateway (task 4.6) and the clearance board for roles 27 and 28 (task 4.8), as standalone modules inside the owned paths only. The test file passes 47 of 47, using fake vendors only and a socket guard that fails any network attempt. I also ran the agreement CLI for real on 16 clearance keys built from the latest crawler snapshot. No vendor keys exist on this machine, so it sent 0 requests, cleared nothing, and wrote reports/phase4_agreement.md. Code-level criteria C1 to C12 are met. C13 (real vendor keys, a separate advisor OS user, and agreement with the human's clearances) is [ops]. No file outside the owned paths was edited, nothing was installed, and no order or vendor API was touched.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\advisor\\gateway.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\advisor\\board.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase4\\test_advisor_board.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase4_agreement.md",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\data\\advisor\\backlog_snapshot.jsonl (runtime)",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\data\\advisor\\gateway.db (runtime)"
+ ],
+ "commands_run": [
+  ".venv\\Scripts\\python.exe -m pytest tests/phase4/test_advisor_board.py -q   (47 passed)",
+  ".venv\\Scripts\\python.exe -c \"<build backlog from latest snapshot via trader.marketdata.market_info + trader.kernel.clearance_key>\"   (16 keys -> data/advisor/backlog_snapshot.jsonl)",
+  ".venv\\Scripts\\python.exe -m advisor.board agree --backlog data\\advisor\\backlog_snapshot.jsonl --snapshot data\\markets\\2026-10-01T084927Z.jsonl --human-db data\\trader\\advice.db --out reports\\phase4_agreement.md   ({\"agree-not-cleared\": 16, \"calls\": 0})",
+  ".venv\\Scripts\\python.exe -c \"import sys, advisor.gateway; ...\"   (no trader module loaded)",
+  "grep -rnE \"^\\s*(from|import)\\s+advisor\" trader/   (none)",
+  "env | cut -d= -f1 | grep -E \"_(KEY|SECRET|TOKEN|PASSWORD)$\"   (names only; no vendor keys present)"
+ ],
+ "tests_passed": true,
+ "test_output_tail": "...............................................                          [100%]\n47 passed in 2.67s",
+ "ac_self_check": [
+  {
+   "ac": "C1 rotation: vendors=2 gives two distinct vendors, most quota left first, len(result)==vendors",
+   "status": "met",
+   "evidence": "test_c1_rotation_distinct_most_quota_first_and_fixed_length: picks gemini, then groq (gemini now has 999 left), then 2 distinct vendors; with one key and vendors=3 returns gemini plus 2 x 'no vendor available'"
+  },
+  {
+   "ac": "C2 quota persists across instances, resets next UTC day, exhausted vendor's transport never called",
+   "status": "met",
+   "evidence": "test_c2_quota_persists_across_instances_and_resets_next_utc_day (997 left in a second instance, 1000 after +1 day); test_c2_exhausted_vendor_transport_never_called (cap 2: 2 calls, then the third returns 'no vendor available' with no transport call). Requests count when sent, failed ones included."
+  },
+  {
+   "ac": "C3 cache: identical input cached=True, no call, quota unchanged; failures not cached",
+   "status": "met",
+   "evidence": "test_c3_cache_hit_spends_nothing_and_failures_are_not_cached"
+  },
+  {
+   "ac": "C4 fail closed: timeout, 429, 500, non-JSON, missing field, out-of-enum give ok=False without raising",
+   "status": "met",
+   "evidence": "test_c4_fail_closed has 7 parametrized cases (timeout, http429, http500, non_json, missing_field, out_of_enum, non_json_body); test_c4_httpx_timeout_type_and_internal_error_never_raise covers httpx.ReadTimeout and an unopenable SQLite db"
+  },
+  {
+   "ac": "C5 env secret value, 64-hex string or 'bankroll' refused before any transport call",
+   "status": "met",
+   "evidence": "test_c5_non_public_prompt_refused_before_transport covers env_secret, hex64, bankroll, balance, p_and_l, position_size (no call, no quota spent); test_c5_vendor_key_value_in_prompt_refused"
+  },
+  {
+   "ac": "C6 no keys: every vendor unavailable, transport never called; no trader<->advisor imports",
+   "status": "met",
+   "evidence": "test_c6_no_keys_no_vendor_no_transport; test_c6_gateway_off_trading_path (AST import scan of gateway.py and every trader/**/*.py); grep -rnE '^\\s*(from|import)\\s+advisor' trader/ finds nothing; importing advisor.gateway loads no trader module"
+  },
+  {
+   "ac": "C7 parsers: clear parses clear; role-27 missing point or dispute high is a veto; role-28 veto without concrete reading is a veto; non-JSON is a veto",
+   "status": "met",
+   "evidence": "test_c7_complete_clear_answers_parse_clear; test_c7_role27_missing_or_empty_point_vetoes (parametrized over all 9 material points, both missing and empty); test_c7_role27_dispute_high_negrisk_silence_and_auditor_veto; test_c7_role28_veto_needs_concrete_reading_and_non_json_vetoes"
+  },
+  {
+   "ac": "C8 board matrix: both roles x two qualified vendors clear -> cleared; any veto/error/timeout/same-vendor/unqualified -> not",
+   "status": "met",
+   "evidence": "test_c8_board_matrix (7 cases: all_clear, one_27_veto, one_28_veto, error, timeout, same_vendor, unqualified; also asserts vendors=2 per role and that the 64-hex rules hash never appears in a prompt); test_c8_vendor_votes_record_clear_veto_error"
+  },
+  {
+   "ac": "C9 every vendor at zero quota: nothing cleared, nothing written",
+   "status": "met",
+   "evidence": "test_c9_exhausted_quota_blocks_clearance_and_writes_nothing (real LLMGateway, ROSTER_ADVISOR_KEY set, all caps 0: no transport call, no db, no JSONL). The real run also showed 16/16 not cleared with 0 calls."
+  },
+  {
+   "ac": "C10 record read by load_advice, key == clearance_key(m), verify True/False, keys JSONL accepted by clearance_cli sign",
+   "status": "met",
+   "evidence": "test_c10_record_compatible_with_kernel_and_clearance_cli (exact field set; signer 'llm-board:gemini/gemini-2.5-flash+groq/llama-3.3-70b-versatile'; clearance_cli.main([... 'sign', '--keys', jsonl, '--signer', 't']) returns 0 and the key appears); test_c10_no_signature_without_advisor_key_or_with_the_human_key"
+  },
+  {
+   "ac": "C11 agreement CLI end to end with fake gateway on fixture backlog in tmp paths, report has every section",
+   "status": "met",
+   "evidence": "test_c11_agreement_cli_end_to_end: one of each category, a skipped bad key, a key with no rules text, a concrete role-28 veto reason; 4+4 vendor calls, the shared prompt served from cache; sections Agreement / Per template / Vendor calls used / How to reproduce; human db untouched"
+  },
+  {
+   "ac": "C12 pytest tests/phase4/test_advisor_board.py -q passes with autouse socket guard",
+   "status": "met",
+   "evidence": "47 passed in 2.67s; autouse fixture no_network patches socket.socket.connect to raise"
+  },
+  {
+   "ac": "C13 [ops] separate advisor OS user, real free-tier keys, agreement report on the real backlog vs human clearances, switch only when they agree",
+   "status": "operational_pending",
+   "evidence": "No vendor keys and no human clearances exist yet. reports/phase4_agreement.md is the no-key run on the 16 real snapshot keys: all fail closed with 0 calls. Every reason reads 'no vendor available', not 'non-public content', so all 32 real role prompts passed the public-text filter. Re-run with keys and the kernel's real uncleared.jsonl once available."
+  }
+ ],
+ "key_results": "**Gateway** (advisor/gateway.py, `LLMGateway(db, transport=httpx_post, clock=now_ms)`):\n- Implements `advisor.contracts.Gateway` and never raises.\n- **Vendors:** Gemini, Groq and OpenRouter are configured in `VENDORS`, with daily caps of 1000, 1000 and 50. Keys are read from env at call time.\n- **Storage:** quota per vendor per UTC day and the input-hash cache both live in one SQLite file.\n- **Rotation:** cached vendors come first because they are free, then the vendor with the most quota left.\n- **Fail closed:** schema subset validator; timeout, HTTP error, non-JSON or schema mismatch all give `ok=False`.\n- **Public text only:** a prompt is refused before sending if it contains an env secret value, a 64-hex string, or the words bankroll, balance, pnl, P&L or \"position size\".\n- `quota_left()` reports 0 for a vendor without a key, because it can take no requests.\n\n**Board** (advisor/board.py):\n- **Schemas:** R27 has 9 material points plus dispute_risk and verdict; R28 has verdict, reading and scenario.\n- **Parsers:** `parse_27` and `parse_28` re-validate every answer, so the board does not trust any Gateway implementation.\n- `clear_template(gateway, key, question, rules_text, now_ms, qualified=QUALIFIED, db=, keys_out=, days=7)` returns `(cleared, [RoleVerdict 27, RoleVerdict 28])`.\n- **Signing:** records are written with `tools.clearance_cli.write` (reused, so the shape matches exactly) under `ROSTER_ADVISOR_KEY`. Nothing is signed if that key is missing or equals `ROSTER_HUMAN_KEY`, and nothing is ever written to `data/trader/advice.db`.\n- **Co-sign list:** cleared keys are also appended as JSONL for `clearance_cli sign --keys`.\n- **Agreement CLI:** `python -m advisor.board agree` writes the agreement report.\n\n**Design points the auditor should know:**\n1. **Hash not in prompts.** `rules_sha256` is 64 hex characters, so the private-key guard would refuse any prompt containing it. Prompts carry the rules text plus only the template, neg_risk and source_id fields. A side effect is that a tick or fee change reuses the cached audit.\n2. **Who can clear.** `QUALIFIED` is a literal list of allowed (vendor, model) pairs, so changing a model in `VENDORS` makes that vendor veto-only until it is re-qualified.\n3. **Co-sign list needs no key.** The keys JSONL is written on any clear, even without the advisor key, so a human can co-sign during the run-alongside period. Signed records still need the key.\n\n**Real run:** 16 snapshot keys (12 rules hashes), 0 requests sent, 16 agree-not-cleared. The report says plainly that the board failed closed and that this was not a qualification run.",
+ "wiring_notes": "1. **Advisor process.** Run as the separate advisor OS user, which has no access to the trading key or the journal.\n   - Build `LLMGateway()` (default db data/advisor/gateway.db). Each time the kernel dumps `data/trader/uncleared.jsonl`, or role 07 reports a rules or clarification change (a new rules_sha256 is a new key), run `python -m advisor.board agree --backlog data/trader/uncleared.jsonl`.\n   - Alternatively call `board.clear_template(gw, key, question, rules_text, now_ms)` per key, taking the rules text from the crawler row with that key's rules_sha256.\n   - Set `ROSTER_ADVISOR_KEY` (never the human key) and the vendor keys `GEMINI_API_KEY`, `GROQ_API_KEY` and `OPENROUTER_API_KEY` in that user's env only.\n2. **Kernel acceptance.** This is a Phase 1 change and needs the human's token. Have RiskKernel also load `data/advisor/llm_clearances.db` via `trader.kernel.load_advice`, and verify those records with `ROSTER_ADVISOR_KEY`, for slow-lane templates only. Alternatively the human co-signs `data/advisor/cleared_keys.jsonl` with `python -m tools.clearance_cli sign --keys data/advisor/cleared_keys.jsonl --signer NAME`. Switch to board-only clearances only after the agreement report shows the board agreeing with the human (C13).\n3. **Role 36 AI-quota alarm.** Read `LLMGateway(...).quota_left()`; any vendor at 0 means it is exhausted or has no key.\n4. **WP4-D sentinel.** It can take this `LLMGateway` directly as its `Gateway` (`complete(\"25-sports-news\", prompt, schema, vendors=1)`). Its prompts must avoid 64-hex strings and the account words, or they will be refused (fail closed).\n5. **Before going live**, confirm the free-tier models and caps in `gateway.VENDORS` against each vendor's current docs, and update `board.QUALIFIED` to match.",
+ "open_issues": [
+  "C13 [ops]: needs real free-tier vendor keys, a separate advisor OS user, human clearances in data/trader/advice.db, and the kernel's real uncleared.jsonl backlog. The current reports/phase4_agreement.md is the no-key fail-closed run.",
+  "The default models in gateway.VENDORS (gemini-2.5-flash, llama-3.3-70b-versatile on Groq, deepseek/deepseek-chat-v3.1:free on OpenRouter) and their caps are best-known defaults that have not been checked against live vendor docs, because no keys exist and no vendor API may be called. Verify them before the C13 run. QUALIFIED lists the same pairs and must change with them.",
+  "The 'Vendor calls used' count comes from the change in quota_left() before and after the run, so it is wrong for a run that crosses UTC midnight (marked with a ponytail comment).",
+  "The public-text filter refuses any rules text containing 'balance' (for example a political market) or any 64-hex run. That is fail closed by design, but such templates can never be board-cleared and need a human clearance.",
+  "The agreement report does not verify the signatures on human clearances, because the advisor never holds ROSTER_HUMAN_KEY. It counts unexpired records whose key matches exactly.",
+  "Quota is not locked across processes: two gateway processes at once could overshoot a vendor's cap by a few requests. One advisor process is assumed."
+ ]
+}

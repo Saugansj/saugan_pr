@@ -1,0 +1,88 @@
+{
+ "verdict": "PASS",
+ "ac_results": [
+  {
+   "ac": "B1 flags off: market set and books identical to before (fixture snapshot)",
+   "status": "pass",
+   "command": ".venv\\Scripts\\python.exe build\\wiring\\audit-tmp\\WW-B\\gold_check.py <scratchpad>\\orig orig  (and ... new); .venv\\Scripts\\python.exe build\\wiring\\audit-tmp\\WW-B\\real_snap.py <scratchpad>\\orig; code read of diff -u --strip-trailing-cr orig/marketdata.py trader/marketdata.py",
+   "evidence": "Ran the test's own b1_state with the pre-WW-B crawler.py and marketdata.py swapped into sys.modules. The digest d4d3794a...212ea equals GOLD_B1, so the golden value really came from the unedited code. The new code gives the same digest (4 markets, ref [BTC, ETH]). On the real shared snapshot 2026-10-07T074751Z, read-only with crawling refused, original and new load_markets are identical: 222 markets for TARGET_MODES and 318 for all modes. Code read: with features=() the flags-off branches are inert. _ext_missing is False, _ext_mapper returns market_info, crawl(crawler.MODES) is called as before, refs.track is False, held=None gives {} (same 6 h drop), the sports branches are skipped, and DVOL_ASSETS filtering is a no-op for BTC/ETH."
+  },
+  {
+   "ac": "B2 held market past end+6h stays in markets until its position is zero",
+   "status": "pass",
+   "command": ".venv\\Scripts\\python.exe -m pytest tests/wiring/test_ww_b.py -q (test_b2_held_market_past_end_stays_until_position_is_zero); code read of MarketData._set_markets",
+   "evidence": "The test passes. With held=None the market drops at end + 6 h. With held set it stays, including after it leaves the snapshot, and it drops once the position is 0. The code keeps a market when abs(held[token]) > 1e-9 for either token. trader.loop.Trader.positions is a bound method returning {token: shares net of redemptions}, so md.held = trader.positions fits the callable contract. If held() raises, _poll catches the error and skips that reload (markets are kept, which fails safe)."
+  },
+  {
+   "ac": "B3 touch and SOL/XRP rows map correctly with their flags on (fixture test)",
+   "status": "pass",
+   "command": ".venv\\Scripts\\python.exe -m pytest tests/wiring/test_ww_b.py -q; read data/trader/wiring_B/smoke.json and the builder's smoke script",
+   "evidence": "test_b3_crawler_adds_each_template_only_with_its_flag and test_b3_marketdata_maps_touch_and_sol_xrp_rows pass. They check asset, kind, strike, event_group, source_id and window_start, and that each template appears only with its own flag (SOL touch needs both). The window_extremes, touch_ref fail-closed, sigma_q NaN guard and sports mapping tests also pass. In the builder's live smoke.json: 1031 rows with all 4 assets and every kind mapped, 0 without a source_id, 267 touch windows, touch_fair returned a value for all 267, and SOL/XRP sigma_q was about 0.47."
+  },
+  {
+   "ac": "B4 router: two own takers cannot both fill the same displayed size; existing execution tests pass",
+   "status": "pass",
+   "command": ".venv\\Scripts\\python.exe build\\wiring\\audit-tmp\\WW-B\\fuzz_on_a.py, fuzz_on_b.py, fuzz_off_b.py, router_fuzz.py <scratchpad>\\orig; pytest trader/tests tests/phase5",
+   "evidence": "test_b4 (two_takers, two_makers) passes. Independent fuzz, adapted from the Phase 5 parity fuzz: (a) the original generator with liquidity_once=True gives 3000 scenarios, 15,489 fills, 0 mismatches against FillModel strict; (b) with the fix-2 exclusions removed, so several own takers and makers compete, it gives 3000 scenarios, 19,737 fills, 0 mismatches; (c) the same as (b) with the flag off gives 1021 mismatches, so the test does detect the defect. Flag-off router against the original router.py: 2000 random op sequences, 0 differences in fills or journal length. All of trader/tests (including test_execution.py) and tests/phase5 pass."
+  },
+  {
+   "ac": "B5 crawler changes additive: flags off gives the same snapshot rows",
+   "status": "pass",
+   "command": "gold_check.py (orig and new); diff -u --strip-trailing-cr orig/crawler.py recorder/crawler.py; pytest recorder/test_recorder.py",
+   "evidence": "The B5 digest 83798ff7...706a7 is the same from the original crawler.py and the new one, and equals GOLD_B5. Code read: classify() returns mode_of with HORIZON_H[mode] when no touch/universe_ext flag is set, the horizon max and tag list are unchanged with flags off, and crawl() passes features=() by default. recorder/test_recorder.py passes."
+  },
+  {
+   "ac": "Hard rules: flags default OFF / flags-off = Phase 1",
+   "status": "pass",
+   "command": "code read of the three diffs; gold_check.py; real_snap.py; router_fuzz.py",
+   "evidence": "MarketData.features defaults to frozenset(), held to None, PaperRouter liquidity_once to False, and crawl/candidates/load_markets features to (). The equivalence checks above all pass."
+  },
+  {
+   "ac": "Hard rules: no real order / authenticated endpoint / LLM vendor",
+   "status": "pass",
+   "command": "grep for https?://, wss?://, environ, Authorization, api_key, anthropic, openai, LiveRouter, trader.live in the 3 owned files; grep on sports/odds.py map_markets, sports/gamestate.py feed_age_ms, trader/growth/universe.py",
+   "evidence": "WW-B adds no new hosts. The new REST calls are public Binance klines (BINANCE_KLINES, already used). The sports helpers it calls (odds.map_markets, gamestate.feed_age_ms) do no I/O, and the keyed odds fetchers are never called from WW-B code. The PaperRouter LIVE_ENV refusal is unchanged, and no LLM import was found."
+  },
+  {
+   "ac": "Hard rules: nothing touched data/trader/paper14/; no process signalled",
+   "status": "pass",
+   "command": "ls -la --time-style=full-iso data/trader/paper14/ (stat only); ls -t data/markets; find data/trader/wiring_B",
+   "evidence": "paper14 was created at 13:28:54, before the WW-B edits (13:33 to 13:49). Its later mtimes (journal, audit, trader.db-wal) are what its own running trader writes. Nothing points to a WW-B write: the smoke script writes only to data/trader/wiring_B/ (markets/, rtt.jsonl, smoke.json). The shared data/markets/ latest snapshot is still 074751Z. The running paper14 process keeps the pre-edit code in memory, and on restart flags-off behaviour is identical (verified above)."
+  },
+  {
+   "ac": "Hard rules: AI/T5 cannot raise edge/size or reach HALTED; sizes never round up",
+   "status": "pass",
+   "command": "code read of router.round_size and the taker/maker fill paths; pytest tests/invariants",
+   "evidence": "WW-B does not touch the kernel or breakers, and tests/invariants passes. round_size is floor(size*100+1e-9)/100. The flag-on taker size is round_size(min(displayed - used, left)), which floors and skips anything <= 0. The maker fill is the exact remainder round(i.size - o.filled, 6), which is unchanged."
+  },
+  {
+   "ac": "Hard rules: files only in owned paths",
+   "status": "pass",
+   "command": "find . (excl .venv/data/__pycache__) -newermt '2026-10-07 13:20' ! -newermt '2026-10-07 14:10'",
+   "evidence": "WW-B's footprint is trader/marketdata.py, trader/router.py, recorder/crawler.py and tests/wiring/test_ww_b.py. All other modified files belong to WW-A (kernel, breakers, test_ww_a), WW-C (engines, test_ww_c), WW-E (nightly, advisor, tests/invariants, test_ww_e) or the orchestrator (dispatch, phase-1 audit). .pytest_cache is pytest tooling."
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "With touch or universe_ext on, load_markets crawls again whenever the latest snapshot has no flagged template. The recorder's hourly flags-off crawl causes this. The re-crawl writes into the shared data/markets/ (crawler default out_dir), takes about 254 s live, and blocks MarketData start-up, possibly on every 5-minute reload. The builder disclosed this as a ponytail comment. A flags-off reader's market set is unaffected (B1 is verified with the extra rows present).",
+   "file": "trader/marketdata.py",
+   "fix_hint": "WW-D should give flagged runs their own markets_dir (or MarketData a markets_dir parameter). Later, add a 'crawled with' marker so a missing template doesn't trigger a crawl on every reload."
+  },
+  {
+   "severity": "minor",
+   "description": "The router fix (fix 2) sits behind a constructor kwarg, PaperRouter(liquidity_once=False), not a dispatch flag. Paper/replay parity holds only once WW-D or the orchestrator passes True. Keeping it off is correct under ground rule 1 (flags off = Phase 1). The builder disclosed this.",
+   "file": "trader/router.py",
+   "fix_hint": "WW-D: tie liquidity_once to a features.py flag (for example in the paper-safe set) and pass it in loop.py."
+  },
+  {
+   "severity": "minor",
+   "description": "recorder/crawler.py changed line endings from LF (the original copy) to CRLF, so every byte of the file differs. Behaviour is unchanged (B5 digest verified).",
+   "file": "recorder/crawler.py",
+   "fix_hint": "Cosmetic. Keep the original line endings on future edits so diffs stay readable."
+  }
+ ],
+ "rules_check": "Flags default off: MarketData.features is frozenset(), held is None, PaperRouter liquidity_once is False, and crawler/load_markets features is (). Flags-off equivalence is verified independently on the original code: B1 and B5 golden digests, the real snapshot (222/318 markets identical), and the router fuzz (2000 cases, 0 differences). Paper only: no new hosts, only public Binance klines, the sports helpers are pure, and the LIVE_ENV refusal is unchanged. No LLM or keyed calls. paper14 was not touched; stat-only check shows the trader started 13:28:54, before the edits, and the builder's output went only to data/trader/wiring_B. The shared data/markets latest is still 074751Z. No processes were signalled by me. Files: only the 4 owned files were changed by WW-B. Sizes floor via round_size, and the maker remainder is unchanged. Kernel and HALTED paths are untouched, and tests/invariants pass. I created files only under build/wiring/audit-tmp/WW-B/ and ran pytest with -p no:cacheprovider.",
+ "tests_rerun_output_tail": "pytest tests/wiring/test_ww_b.py trader/tests tests/invariants -q: 147 passed in 15.56s\npytest trader/tests tests/invariants tests/phase2 tests/phase3 tests/phase4 tests/phase5 tests/wiring recorder/test_recorder.py -q: 722 passed in 76.04s (0:01:16)",
+ "notes": "Verdict PASS. All of B1 to B5 are verified by commands, not only by the builder's tests. The golden digests were recomputed by swapping the builder's pre-edit copies (scratchpad/orig, which diff cleanly against the current files with only WW-B additions) into the test's own state builders, and they match. B4 was checked with a Phase-5-style parity fuzz: 0 mismatches with the flag on across 19,737 fills including competing own orders, and 1021 mismatches with the flag off, which shows the fuzz is sensitive.\n\nIntegration items for WW-D (not defects of WW-B):\n- pass features into MarketData;\n- set md.held = trader.positions (a bound method, which fits the callable contract);\n- wire liquidity_once to a flag;\n- loop.MD._subscribe deletes untraded markets, which may drop touch, SOL/XRP and sports markets;\n- sports MarketInfo has source_id '' and kind 'moneyline', so the kernel provenance check refuses it (fails closed) until WW-A adds an entry.\n\nObservation: touch windows in Ref.windows keep extending after a market ends and are never pruned for dropped markets. The memory cost is small, and pricing at tau <= 0 is WW-C's guard.\n\nScratch scripts: C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\build\\wiring\\audit-tmp\\WW-B\\ (gold_check.py, real_snap.py, router_fuzz.py, fuzz_on_a.py, fuzz_on_b.py, fuzz_off_b.py, t1.txt, t2.txt).\n\nHow to reproduce: from the roster folder, with O = the folder holding the pre-WW-B crawler.py, marketdata.py and router.py (here C:\\Users\\DELL\\AppData\\Local\\Temp\\claude\\c--Users-DELL-Downloads-saugan-pr-market-updated\\9bf560a4-c423-4051-bcba-9ee1eb0199bf\\scratchpad\\orig), run:\n- .venv\\Scripts\\python.exe build\\wiring\\audit-tmp\\WW-B\\gold_check.py O orig, then the same with new;\n- .venv\\Scripts\\python.exe build\\wiring\\audit-tmp\\WW-B\\real_snap.py O;\n- .venv\\Scripts\\python.exe build\\wiring\\audit-tmp\\WW-B\\router_fuzz.py O;\n- .venv\\Scripts\\python.exe build\\wiring\\audit-tmp\\WW-B\\fuzz_on_a.py, then fuzz_on_b.py and fuzz_off_b.py;\n- .venv\\Scripts\\python.exe -m pytest tests/wiring/test_ww_b.py trader/tests tests/invariants -q, then the full suite listed above."
+}

@@ -1,0 +1,111 @@
+{
+ "summary": "I built WP5-D from scratch. The previous builder had left only the empty `__init__.py` files. There are three role modules and one smoke runner under `advisor/roles_p5/`, all talking only to an `advisor.contracts.Gateway`. `board.py` holds role 30 (correlation adversary), role 31 (change gate), and `ask()`, the shared guard every role sends through. `shock.py` is role 24's LLM part (unscheduled shocks, pull only, no direction). `shadow.py` is role 26, the permanent shadow forecaster: ensemble, Platt fit, caps, market blend, append-only research log, cutoff-aware scoring, error correlation / N_eff, and `run_batch`. `smoke.py` runs all four roles against a scripted fake gateway, using public text from the latest `data/markets/` snapshot plus synthetic headlines, and writes `reports/phase5_advisor_smoke.md`. All 70 tests in my test file pass offline, and the full `tests/phase5` folder passes (114). Every AC grep comes back empty. No network, vendor, key or authenticated call was made, and nothing was installed.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\advisor\\roles_p5\\board.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\advisor\\roles_p5\\shock.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\advisor\\roles_p5\\shadow.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\advisor\\roles_p5\\smoke.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\advisor\\roles_p5\\out\\shadow_smoke.jsonl",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase5\\test_advisor_roles.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase5_advisor_smoke.md"
+ ],
+ "commands_run": [
+  ".venv\\Scripts\\python.exe -m advisor.roles_p5.smoke",
+  ".venv\\Scripts\\python.exe -m pytest tests/phase5/test_advisor_roles.py -q",
+  ".venv\\Scripts\\python.exe -m pytest tests/phase5 -q",
+  "grep -rnE \"^\\s*(import|from)\\s+(httpx|urllib|requests|aiohttp|websockets|socket|openai|anthropic|google|groq)\" advisor/roles_p5",
+  "grep -n \"promote(\\|\\.register(\\|\\.record(\" advisor/roles_p5/board.py",
+  "grep -rn \"roles_p5.shadow\\|shadow_research\" trader learning nightly --include=*.py",
+  "grep -rn \"promote(\" learning advisor/roles_p5 --exclude=loop_a.py"
+ ],
+ "tests_passed": true,
+ "test_output_tail": "tests/phase5/test_advisor_roles.py: 70 passed in 6.33s\ntests/phase5 (all WPs): 114 passed in 28.06s\nD1 grep: no output (rc=1); D8 grep: no output (rc=1); D12 grep: no output (rc=1); phase-wide promote( grep: no output (rc=1)",
+ "ac_self_check": [
+  {
+   "ac": "D1 no network/vendor imports in advisor/roles_p5",
+   "status": "met",
+   "evidence": "The exact grep finds nothing (rc=1). test_d1_no_network_or_vendor_imports repeats the check."
+  },
+  {
+   "ac": "D2 prompt hygiene (sentinels and POLY_API_SECRET)",
+   "status": "met",
+   "evidence": "test_d2_no_private_value_reaches_a_prompt: inputs to all 4 roles carry sentinels for size, price paid, balance, P&L, evidence, cap and mid, and POLY_API_SECRET is set. None of them appears in any recorded prompt. test_d2_secret_in_prompt_is_never_sent: the env value is put into each role's prompt text. The result is 0 gateway calls; role 24 pulls BTC and ETH, roles 30 and 31 veto, and role 26 returns insufficient."
+  },
+  {
+   "ac": "D3 fail closed per role (ok=False, malformed, missing field, exhausted quota)",
+   "status": "met",
+   "evidence": "test_d3_fail_closed is parametrised over the 4 cases. Role 24 pulls every enabled underlying with shrink 0 and resume-on-fresh-observation. Roles 30 and 31 veto. Role 26 excludes every answer and returns insufficient. test_d3_one_bad_vendor_vetoes_and_is_excluded: one bad vendor is enough for a veto, and role 26 excludes only that model. test_d3_shadow_partial_quota_excludes covers partial quota. The smoke's fail-closed table shows the same."
+  },
+  {
+   "ac": "D4 role 24",
+   "status": "met",
+   "evidence": "Tests cover each point: an unmatched item makes 0 calls; a confirmed ETH shock gives exactly one pull scoped ETH, shrink 0.0, resume on fresh observation True, expiry by severity; ALL gives one signal per enabled underlying; not-a-shock gives no signal; the vendor's extra 'direction'/'price_target' fields are dropped (no direction field, none of it in the reason); an item recorded after now_ms is ignored with 0 calls. There are also keyword match/no-overmatch tests."
+  },
+  {
+   "ac": "D5 role 30",
+   "status": "met",
+   "evidence": "test_d5_cache_and_cap_raise: 100 reviews make 1 call; a lower cap makes no call; a cap raise makes a new call; the cap never appears in a prompt. test_d5_clear_needs_two_distinct_clear_vendors_without_links: a link, one veto, or the same vendor twice each give a veto. test_d5_single_answer_vetoes covers a single answer."
+  },
+  {
+   "ac": "D6 role 31 rule 7",
+   "status": "met",
+   "evidence": "test_d6_flagged covers: quote_size up, budget up (budgets:<mode> name and budget_* key), c_shrink up, half_min down, complement_margin down, move_k up, kappa changes (both forms), an unknown param, a non-numeric change, trader/kernel.py and a Windows trader\\live path. test_d6_not_flagged confirms that lowering quote_size is not flagged."
+  },
+  {
+   "ac": "D7 role 31 evidence",
+   "status": "met",
+   "evidence": "test_d7_flagged_without_evidence_vetoed_with_no_call (no prereg, no evidence, below n, failed test, verdict string 'PASS' with se=0) gives a veto with 0 calls. test_d7_complete_evidence_runs_review_without_numbers runs the 2-vendor review; the clear verdict's reasons contain 'pass still needs a human token'; the prompt holds only 'c_shrink: raised by 33%', with no evidence numbers or values; one vendor veto gives a veto."
+  },
+  {
+   "ac": "D8 no promote/register/record in board.py",
+   "status": "met",
+   "evidence": "The exact grep finds nothing (rc=1). test_d8 repeats it."
+  },
+  {
+   "ac": "D9 role 26 ensemble",
+   "status": "met",
+   "evidence": "test_d9_combine_hand_values: the median and 10% trimmed mean match hand values. test_d9_insufficient_caps_and_no_mid_in_prompt: 3 valid answers give insufficient with no forecast; calibrated values are capped at 0.97 and 0.03; the mid sentinel is never in the prompt; the blend and Platt formulas match by hand; n_vendors is clamped to 10."
+  },
+  {
+   "ac": "D10 Platt",
+   "status": "met",
+   "evidence": "test_d10_platt_recovers_and_identity_below_100 (seed 7): 2,000 rows recover a=-0.4, b=1.6 within 0.1; 99 rows give the identity (0,1); mixed modes raise an error."
+  },
+  {
+   "ac": "D11 scoring and correlation",
+   "status": "met",
+   "evidence": "test_d11_scored_only_after_cutoff: with one market before the cutoff and one after, only the later one is scored, and a model with no cutoff is never scored. test_d11_score_uses_clustered_se: the SE equals clustered_mean. test_d11_error_correlation_neff: identical models give N_eff=1.0, and 6 independent models give |N_eff-6| <= 0.6."
+  },
+  {
+   "ac": "D12 permanent shadow",
+   "status": "met",
+   "evidence": "test_d12_log_append_only: earlier log bytes are a prefix of the file after 3 more forecasts, and the required fields are present. The exact grep over trader, learning and nightly finds nothing. Nothing outside advisor/roles_p5 and tests/phase5 imports roles_p5."
+  },
+  {
+   "ac": "D13 smoke writes reports/phase5_advisor_smoke.md",
+   "status": "met",
+   "evidence": "`python -m advisor.roles_p5.smoke` wrote the report with role 24 signals and call counts, role 30 cache/cap-raise verdicts, the role 31 change table, role 26 forecasts plus the run_batch quota stop, and a fail-closed table for 5 cases x 4 roles. It ends with 'How to reproduce'. test_d13_smoke_writes_report runs it to tmp_path."
+  },
+  {
+   "ac": "D14 pytest tests/phase5/test_advisor_roles.py passes offline",
+   "status": "met",
+   "evidence": "70 passed in 6.33s. An autouse fixture makes socket.connect raise."
+  },
+  {
+   "ac": "D15 [ops] real vendor calls, shadow scores after cutoffs, role 30/31 vs human backlog",
+   "status": "operational_pending",
+   "evidence": "Waiting on three things: Phase 4's real gateway with free-tier API keys (none on this machine); markets that resolve after each model's cutoff (calendar time); and a comparison of role 30/31 verdicts against the human's on a backlog before they are relied on."
+  }
+ ],
+ "key_results": "The smoke ran on the latest snapshot, data/markets/2026-10-01T121820Z.jsonl (462 markets).\n\n- **Role 24:** 6 synthetic headlines led to 4 gateway calls. The unmatched item and the late item made none.\n  - The ETH exploit gave a pull on ETH for 240 min; the vendor's extra 'direction' was dropped.\n  - The stablecoin depeg gave pulls on BTC and ETH for 60 min.\n  - The 'maintenance outage' headline matched a keyword, but the vendor said it was not a shock, so no signal.\n  - A malformed answer gave a fail-closed pull on BTC and ETH.\n- **Role 30:** the first entry cleared on 1 call. 100 repeats plus a lower cap stayed at 1 call. A cap raise to 250 made a second call, where vendor 2 named the BTC/ETH same-noon-print link, so it was vetoed.\n- **Role 31:**\n  - Lowering quote_size was not flagged, was reviewed, and cleared with 'pass still needs a human token'.\n  - Raising quote_size without a pre-registration, evidence below n, and a kappa change with a failed test were each vetoed with 0 calls.\n  - Raising c_shrink with passing evidence was reviewed and cleared, with the human-token note.\n  - The kernel retry change was flagged as touching T0; a vendor found a 'no retry on unknown state' violation, so it was vetoed.\n- **Role 26:** 3 of 4 markets got a forecast. The market where half the vendors failed returned insufficient. run_batch stopped after 2 forecasts when the fake quota ran out.\n- **Fail-closed table:** every case is a pull, veto or exclusion. A prompt holding the secret makes 0 calls.\n\nAll 114 tests in tests/phase5 pass.",
+ "wiring_notes": "- **Gateway:** construct the roles in the advisor process and pass Phase 4's `advisor.gateway.LLMGateway` instance as `gw`. All roles call only `gw.complete` and `gw.quota_left`.\n- **Role 24:** `ShockReader(enabled=<live underlyings, e.g. ladder PARAMS['assets'] ∪ speed PARAMS['assets']>).read(news_items, now_ms, gw)`. Write each returned CautionSignal to advice.db. The trader pulls quotes until `expires_ms` and resumes only on a fresh observation.\n- **Role 30:** call `CorrelationAdversary.review(event_group, group_markets, {held_group: [markets]}, cap, gw)` from the kernel's first-entry or cap-raise path. Keep one instance per process so the cache holds. A veto means 'not cleared'.\n- **Role 31:** make `ChangeGate().review(change, gw)` a required step before any `Ledger.promote`, still followed by the human token. The change dict is `{kind: code|learned, name, paths, diff, old, new, prereg: {n, pass_z}, evidence: {n, mean, se}}`. For Loop B, map registry candidates to `old`/`new` params, and map pre-registrations and results from the Ledger to prereg/evidence.\n- **Role 26:** run `shadow.run_batch(markets, now_ms, gw, max_markets, platt=shadow.fit_platt(resolved_rows_one_mode), log_path=<ledger-side path>)` daily. Markets are `{cid, cluster_id, mode, question, rules_text, end_time, mid_ex_own}`. Move the research log to a ledger table that nothing in the trader reads.\n- **Audit stamps:** each module exposes `PROMPT_SHA256` for role 04's audit log.\n- **Tests:** copy the D2/D3 fail-closed and prompt-hygiene tests into tests/invariants/ at wiring time.",
+ "open_issues": [
+  "Error correlation: for binary outcomes, every forecaster's error (p - y) shares the outcome noise. N_eff on real resolved data will therefore read lower than the true count of independent forecasters (conservative). The D11 'independent' test measures errors against the true probability. Consider a different error definition once real rows exist.",
+  "Role 30 caches every verdict per group, including vetoes caused by vendor errors, to avoid burning quota on retries. A transient error stays a veto until a cap raise or a process restart (marked with a ponytail comment). Add a TTL on error vetoes if this bites.",
+  "The secret guard ignores env values shorter than 8 chars, the same floor advisor.gateway uses, so flag-like values ('1', 'true') don't refuse every prompt. This is a known ceiling, marked in code.",
+  "Role 31 judges a 'recorded pass' from the numbers (n >= prereg n, se > 0, mean > pass_z x se), as trader/growth/capital.py does; a verdict string is never trusted. The prereg/evidence dict shape must be mapped from Ledger tables at wiring time.",
+  "To keep sizes, caps and budgets out of the prompt, role 31's prompt for learned changes shows each parameter's direction and relative move ('raised by 20%'), never absolute values. A diff over 30,000 chars is vetoed unread.",
+  "The shared guard `ask()` lives in board.py, and shock.py and shadow.py import it. This is the only cross-module import inside the package, chosen to avoid duplicating the secret guard three times.",
+  "D15 [ops]: needs Phase 4 gateway keys, calendar time for resolved post-cutoff markets, and a comparison against the human's verdicts on a backlog."
+ ]
+}

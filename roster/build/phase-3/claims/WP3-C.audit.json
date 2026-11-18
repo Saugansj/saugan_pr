@@ -1,0 +1,88 @@
+{
+ "verdict": "PASS_WITH_OPERATIONAL_PENDING",
+ "ac_results": [
+  {
+   "ac": "C1 mode_of_ext matches recorder.crawler.mode_of on the latest snapshot; classifies SOL/XRP/touch fixtures; None for unrelated slugs",
+   "status": "pass",
+   "command": "pytest tests/phase3/test_universe.py -q -rs (no skips); audit-tmp/WP3-C/probe_offline.py (all snapshots); audit-tmp/WP3-C/probe_live.py (public Gamma GETs, 5 tags, 400-day horizon)",
+   "evidence": "The snapshot test ran against data/markets/2026-10-01T121820Z.jsonl and was not skipped. Across all 4 snapshot files (4385 rows) there were 0 mode mismatches. Live Gamma (2926 open events): 0 slugs where crawler.mode_of gives a mode and mode_of_ext disagrees. Unclassified look-alikes are SOL/XRP hourly/4h/5m, price-on buckets, ethbtc, other coins' touch markets, ATH and 'hit X or Y first'; all are excluded on purpose. The BTC/ETH regexes are the crawler's own (same _D)."
+  },
+  {
+   "ac": "C2 market_info_ext: kind/strike/asset/event_group/source_id for SOL/XRP strike and Up/Down and touch-up/down; None on a missing field; BTC/ETH equals marketdata.market_info",
+   "status": "pass",
+   "command": "pytest (test_market_info_ext_*, test_btc_eth_rows_match_marketdata); probe_offline.py; probe_live.py; probe_ws.py",
+   "evidence": "All snapshot rows: 0 MarketInfo mismatches against market_info. Live: 426 open new-template markets (SOL 77 strike/2 updown/33 up/30 down; XRP 77/2/34/24; BTC 40/39; ETH 35/33), 0 None. Checked on all 426: source_id equals binance:<slug asset>/USDT; the strike/barrier equals the only $ number in the question; no k/M suffixes; touch rules name the High or Low field the kind needs; no ambiguous verbs. These counts match the builder's smoke exactly."
+  },
+  {
+   "ac": "C3 realised sigma within 10% on seeded GBM sigma 0.6 with at least 1 day of 1m bars; too few bars gives None; DVOL asset gives ladder.sigma_q(dvol)",
+   "status": "pass",
+   "command": "pytest test_realized_sigma_on_synthetic_gbm / test_sigma_q_none_and_dvol; auditor sweep of 200 seeds x 1441 bars",
+   "evidence": "200-seed sweep: worst relative error 5.47%, 0 over 10%, so the test seeds were not cherry-picked. 719 closes gives None and 720 gives a value. BTC/ETH return sigma_q(dvol). Formula: sample SD of the 1m log returns x sqrt(525600), a 365-day year. Live Deribit GET: BTC 36.14, ETH 49.95, SOL/XRP None, matching the configured vol sources."
+  },
+  {
+   "ac": "C4 baseline accepts BTC/ETH strike and Up/Down at tau<=24h, rejects SOL, XRP, touch and tau>24h; band_z entry rejects strikes outside band",
+   "status": "pass",
+   "command": "pytest test_baseline_entry / test_band_z_entry; read ladder.py L374/L387; probe_offline.py",
+   "evidence": "Baseline = crypto-term, BTC/ETH, strike/updown, 0<tau<=24, the same filter as ladder.py L374 and L387 (it rejects only tau > max_tau_h). Exactly 24 h is accepted, as in Phase 1. With band_z set, the check fails closed on a missing K, S or sigma, and on a NaN sigma or S. Strikes at 0.95x the band are accepted and at 1.05x rejected, on both sides."
+  },
+  {
+   "ac": "C5 every non-baseline entry is candidate, loop_b True, with complete uniquely named pre-registration",
+   "status": "pass",
+   "command": "pytest test_additions_are_candidates_with_own_prereg; probe_offline.py",
+   "evidence": "4 additions (sol-ladder, xrp-ladder, btc-eth-wide-strikes, btc-eth-touch), all candidate with loop_b True, and 4 unique prereg names universe-<id>-v1. Each has name, hypothesis, statistic, cluster, se, alpha, pass_z, n, futility_z, futility_n, data and params. REGISTRY (universe-vol plus 4 entries) is all candidate. All of it registers and preregisters into a tmp Ledger."
+  },
+  {
+   "ac": "C6 cluster_id union-find cases",
+   "status": "pass",
+   "command": "pytest test_cluster_id; probe_offline.py",
+   "evidence": "Three assets at one instant give one cluster. SOL below 0.3 to both BTC and ETH gets its own ':SOL' cluster (with assets=BTC/ETH/SOL). Below 0.3 to one and 0.3 to the other merges. Different instants differ. NaN or unmeasured pairs merge. The default assets=all four, so an unmeasured XRP merges SOL back in transitively. That is conservative and documented."
+  },
+  {
+   "ac": "C7 report has asset and entry tables, per-entry go-live needs, smoke results, ends with How to reproduce",
+   "status": "pass",
+   "command": "cat reports/phase3_universe.md; tail",
+   "evidence": "It has the Assets table, Entries table, 'What each entry needs before it goes live', the slug-shape table, the smoke results (counts verified against the auditor's own live probe), findings and gaps, and wiring. The last section is '## How to reproduce'."
+  },
+  {
+   "ac": "C8 Rules check R1-R4",
+   "status": "pass",
+   "command": "grep -nE 'urllib|http\\.client|httpx|websockets|socket|get_json' and 'py_clob_client|eth_account|POST|api_key|secret|os\\.environ' over module/test/report; tests run with socket.connect/getaddrinfo patched to raise; find -newermt over code dirs; mtimes of contracts/common/helpers; grep for imports of universe elsewhere",
+   "evidence": "R2: network names (gamma_events, fetch_dvol) appear only inside _smoke (L236-293), which only __main__ --smoke calls. With networking disabled, 41 tests pass. R3: the grep finds nothing, and there are no order, signing, credential or LLM paths. R1: trader/contracts.py (12:11), advisor/contracts.py (14:21), common.py, marketdata, ladder, crawler, ledger and both __init__.py all predate WP3-C's edits (17:54-17:56). No file outside the owned paths imports the module; touch.py mentions it only in a docstring dated 14:40. R4: ladder/marketdata helpers are imported, not copied; one test file; the report ends with How to reproduce."
+  },
+  {
+   "ac": "C9 tests in tests/phase3/test_universe.py pass",
+   "status": "pass",
+   "command": ".venv\\Scripts\\python.exe -m pytest tests/phase3/test_universe.py -q",
+   "evidence": "41 passed in 0.69s; tests/phase3 as a whole: 93 passed in 14.86s."
+  },
+  {
+   "ac": "C10 [ops] each addition through Loop B with own prereg; SOL/XRP kappa/vol fitted on recorded data; clearances signed",
+   "status": "operational_pending",
+   "command": "n/a (needs recorded SOL/XRP data, calendar time, human token)",
+   "evidence": "Pre-registrations and candidate registry entries exist, and the report lists what each entry needs. Running Loop B and signing the clearances needs live time and the human token."
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "The touch barrier parse does not check what follows the number. 'Will Bitcoin reach $91k ...' becomes barrier 91.0 and '$1M' becomes 1.0, instead of returning None, which breaks the 'never guesses' rule. With a barrier far below spot, the pricer would treat the market as touched (P=1). Latent: none of the 426 live questions use a suffix, and Phase 1's market_info 'above $X' regex behaves the same way.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\growth\\universe.py",
+   "fix_hint": "Add a negative lookahead after the number in the L148 regex, e.g. r\"\\b(reach|dip to) \\$([\\d,]+(?:\\.\\d+)?)(?![\\d.,]*\\s*[kKmMbB]\\b)\", or require a space, '?' or end of string after it."
+  },
+  {
+   "severity": "minor",
+   "description": "sigma_q_for returns NaN instead of None when a close is NaN, zero or negative, or when dvol is NaN. accepts() fails closed on NaN, but a downstream pricer gets NaN rather than the documented None.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\growth\\universe.py",
+   "fix_hint": "Return None unless math.isfinite(result) and result > 0, and for DVOL require math.isfinite(r['dvol'])."
+  },
+  {
+   "severity": "minor",
+   "description": "Nothing checks that the rules' Binance pair matches the slug asset. A SOL slug whose rules name BTC/USDT gives asset SOL with source_id binance:BTC/USDT, and the kernel's provenance check, which only checks membership in the strategy's sources, would not catch it. Latent: all 426 live markets match. Phase 1 market_info has the same gap.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\growth\\universe.py",
+   "fix_hint": "In market_info_ext, set src = '' when src != ASSETS[asset]['source_id']."
+  }
+ ],
+ "rules_check": "R1: pass. Only the three owned files carry WP3-C timestamps (17:54-17:56). The contracts, common.py, the imported Phase 0/1 helpers and both shared __init__.py files predate them, and no file outside the owned paths imports the module. R2: pass. Network calls (crawler.gamma_events, marketdata.fetch_dvol) are lazy imports inside _smoke, which only `__main__ --smoke` calls, and the tests pass with sockets disabled. R3: pass. Nothing matches py_clob_client, eth_account, POST, api_key, secret, os.environ, private_key or LLM vendor names. The module returns dicts and MarketInfo only, with no order, signing, credential or paid path, and nothing places sizes. R4: pass. Helpers are imported (sigma_q, ET, H_MS, YEAR_H, market_info, source_id, iso_ms, _utc). There is one test file, the module is about 300 lines with no speculative abstractions, and the report ends with How to reproduce. No look-ahead: the window start uses Gamma startDate, which is later than createdAt, the safe direction, and sigma uses only the closes the caller supplies.",
+ "tests_rerun_output_tail": "tests/phase3/test_universe.py: ......................................... [100%] 41 passed in 0.69s\ntests/phase3 (all): 93 passed in 14.86s\nNo-network run (socket.connect/create_connection/getaddrinfo patched to raise): 41 passed in 0.76s",
+ "notes": "WP3-C passes, with one item left for operations (C10: Loop B runs, fitting SOL/XRP kappa and vol on recorded data, and signed clearances). All code-level criteria C1-C9 were checked independently, not taken from the builder's self-check. There are no blocker or major defects. The three minor defects are all latent hardening gaps; live data shows none of them today.\n\nWhat I checked on live data (public read-only Gamma and Deribit GETs only):\n- **Builder's smoke counts:** reproduced exactly. 426 open new-template markets, 0 None, 0 gaps.\n- **Window starts:** sane. Daily windows are 24 h, weekly 168 h, monthly 744 h. The explicit year-end start of Nov 24, 2025 14:00 EST comes out as 19:00Z.\n- **Rules text:** confirms that monthly and weekly windows start at 00:00 ET on the first day, not at market creation.\n- **Creation-clause windows:** these use Gamma startDate, which is up to about 3 h after createdAt. That is the safe direction: missing a touch inside the window would already have resolved and closed the market.\n\nSmall inaccuracies in the builder's claims:\n- test_mode_of_ext_fixtures has 22 parametrised slugs, not the 26 claimed.\n- The smoke event count differs from mine (1882 vs 2926) because I queried more tags over a longer horizon.\n\nObservations, not defects:\n- cluster_id defaults to all four assets. An unmeasured XRP pair therefore merges SOL back with BTC/ETH transitively unless the caller passes the assets actually settling at that instant. This is conservative (fewer clusters) and documented, but the wiring should pass the assets.\n- BTC/ETH '-above-on-<date>-<h>am-et' events now exist on Gamma. Neither the crawler nor mode_of_ext classifies them, so parity holds.\n\nScratch files, all under C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\build\\phase-3\\audit-tmp\\WP3-C\\: probe_live.py, probe_live.out, events.json, probe_offline.py, probe_ws.py, nonet_run.py.\n\nFiles audited:\n- C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\growth\\universe.py\n- C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase3\\test_universe.py\n- C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase3_universe.md\n\nHow to reproduce (from roster/):\n1. `.venv\\Scripts\\python.exe -m pytest tests/phase3/test_universe.py -q`\n2. `.venv\\Scripts\\python.exe build/phase-3/audit-tmp/WP3-C/nonet_run.py`\n3. `.venv\\Scripts\\python.exe build/phase-3/audit-tmp/WP3-C/probe_offline.py`\n4. `PYTHONIOENCODING=utf-8 .venv\\Scripts\\python.exe build/phase-3/audit-tmp/WP3-C/probe_live.py`. Public GETs; it reuses events.json if that file is present."
+}

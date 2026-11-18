@@ -1,0 +1,132 @@
+{
+ "summary": "WP2-B is built and all 61 tests in tests/phase2/test_live_exec.py pass. Nothing was on disk when I started, so every file below is new. No real order was placed, posted or cancelled, and no authenticated endpoint was called; every venue is a fake.\n\nBuilt:\n- **live.json:** ships as {\"live\": false}.\n- **clob.py:** the three-flag guard, Creds with a masked repr, l2_headers (reproduces both HMAC test vectors), L2Client, SdkSigner, UserWS (the user channel), and a one-off --signer-check.\n- **L2Client details:** _req is the only place the transport is called, and it checks the guard first, at call time. The client never retries, uses a 5 s timeout, and strips credentials out of any venue error message.\n- **SdkSigner:** imports py-clob-client-v2 lazily and raises LiveUnavailable with the [ops] message when it is missing.\n- **router.py (LiveRouter):** the paper order rules, GTD expiry bounds, and a write-ahead journal. Every order is checked and signed, then every `new` line is fsync'd, then one batch post goes out. An ack, an explicit rejection (terminal), or anything else marks the order unknown, and an order is never posted twice. It also has poll (cancel then query at 5 s; trip HALTED plus one cancel_all at 30 s), on_user_event (one fill per trade id, kept across restarts; a FAILED trade trips the reconciler), reconcile_venue and confirm_zero_open.\n- **doctor.py:** dry run without all three flags, plus the wallet, deep and roundtrip steps through LiveRouter.\n- **reports/phase2_execution.md:** every drill with its result, and ends with \"How to reproduce\".\n\nThe one-off signer check ran in research/spike/.venv with a throwaway in-memory key. Our id equalled the SDK's EIP-712 hash for both cases (a BUY and a neg-risk SELL), the signature recovers to the key, nothing was posted and no network call was made.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\live\\live.json",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\live\\clob.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\live\\router.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tools\\live_tools\\doctor.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase2\\test_live_exec.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase2_execution.md"
+ ],
+ "commands_run": [
+  ".venv/Scripts/python.exe -m pytest tests/phase2/test_live_exec.py -q  -> 61 passed",
+  ".venv/Scripts/python.exe -m pytest tests/phase2/ trader/tests -q  -> 288 passed",
+  ".venv/Scripts/python.exe -m tests.phase2.test_live_exec  (drill numbers for the report)",
+  ".venv/Scripts/python.exe -m tools.live_tools.doctor --step all --cid 0xabc  -> dry run, exit 2",
+  "research/spike/.venv/Scripts/python.exe -m trader.live.clob --signer-check  -> equal=true x2, signature recovers, network_calls=0, exit 0",
+  "public read-only smoke: doctor.snapshot_market + doctor.public_book over 40 BTC daily strike markets (GET /book only)",
+  "grep -nE \"0x[0-9a-fA-F]{64}\" over the owned paths, and the A10 assigned-literal regex  -> nothing",
+  "grep -nE \"trader\\.loop\" trader/live/*.py  -> nothing",
+  "stat mtimes of the Phase 1 files"
+ ],
+ "tests_passed": true,
+ "test_output_tail": ".............................................................            [100%]\n61 passed in 2.69s\n(tests/phase2/ + trader/tests: 288 passed in 14.73s)",
+ "ac_self_check": [
+  {
+   "ac": "B1 three-flag guard",
+   "status": "met",
+   "evidence": "test_b1_three_flags: all 8 combinations; only all-true is on, and the missing list names exactly the flags that are off. test_b1_near_misses_are_off: \"live\": \"true\", \"live\": 1, ROSTER_LIVE=true or yes, missing file and bad JSON are all off. test_b1_live_json_ships_off: live.json == {\"live\": false}."
+  },
+  {
+   "ac": "B2 every authenticated call blocked with any flag off",
+   "status": "met",
+   "evidence": "test_b2_flag_off_blocks_every_call: all 9 L2Client methods raise LiveGuardError for each flag off, with 0 transport calls, and LiveRouter(...) raises before it creates the journal. test_b2_flag_turned_off_after_construction: turning off the env, config or cli flag blocks the next call. test_b2_code_read_one_transport_call_after_the_guard: an AST check shows self.transport( appears once, inside _req, after require_live and Creds.from_env, and UserWS.run checks the guard before connecting."
+  },
+  {
+   "ac": "B3 HMAC vectors, five header names, Creds repr",
+   "status": "met",
+   "evidence": "test_b3_hmac_vectors_and_header_names reproduces both orchestrator vectors and the exact five header names. test_b3_creds_repr_and_missing: no secret in repr or str, and a missing variable names the variable, not the value. test_b3_venue_error_never_carries_credentials: an echoed key or secret is redacted."
+  },
+  {
+   "ac": "B4 GTD table and refusal below 2 min + margin",
+   "status": "met",
+   "evidence": "test_b4_gtd covers 10 cases (start unknown, start ahead, start passed, requested earliest, close earliest, floor to the second, exactly at the margin, under it, close too near, start too near). test_b4_router_sends_gtd_seconds_and_refuses_short."
+  },
+  {
+   "ac": "B5 write-ahead",
+   "status": "met",
+   "evidence": "test_b5_new_line_on_disk_before_the_post: the fake venue reads the journal on each post and asserts every posted id already has its new line (wal_checked == 1). test_b5_failed_journal_write_raises_and_posts_nothing: os.fsync raises ENOSPC, submit raises, 0 posts. queue_ahead comes from the book (12.5 in the test)."
+  },
+  {
+   "ac": "B6 acks, rejections, timeouts, poll at 5 s, at most one post per id",
+   "status": "met",
+   "evidence": "test_b6_ack_rejection_timeout (an ack gives open; a reject or HTTP 400 gives cancelled with the reason; HTTP 500 or a timeout gives unknown; the Counter of posted ids has a max of 1 over 40 s of polling). test_b6_poll_at_5s_cancels_then_queries: no call at 4.999 s, and [DELETE /order, GET /data/order/<id>] in that order at 5.000 s. test_b6_query_matched_journals_fills: a query answering MATCHED gives fill entries."
+  },
+  {
+   "ac": "B7 dropped-ack drill",
+   "status": "met",
+   "evidence": "test_b7_dropped_ack_drill with a real RiskKernel: HALTED at 30.0 s, trips == [(global, HALTED, router)], DELETE /cancel-all sent exactly once, a retry on the same token and side is rejected, and after reconcile the order is cancelled."
+  },
+  {
+   "ac": "B8 kill -9 mid-batch drill",
+   "status": "met",
+   "evidence": "test_b8_kill9_mid_batch[k=1,3,5]: the journal is cut after k new lines with the k-th torn. The fresh router marks the k-1 orders unknown, never reposts them, refuses a new order on the same token and side, and replay(path) equals its memory. test_b8_restart_marks_inflight_taker_unknown."
+  },
+  {
+   "ac": "B9 user events and reconciliation",
+   "status": "met",
+   "evidence": "test_b9_user_events: one fill per trade id, MINED and CONFIRMED duplicates ignored, the dedup survives a restart, CANCELLATION journals cancel, a FAILED trade trips the reconciler (HALTED). test_b9_reconcile_and_confirm_zero_open: an order only at the venue gives a mismatch, a trip and DELETE /order; an order only in the journal gives a GET /data/order; confirm_zero_open is True only when both sides are empty (all 3 cases tested)."
+  },
+  {
+   "ac": "B10 paper rules carry over",
+   "status": "met",
+   "evidence": "test_b10_paper_rules: passive rounding (BUY down, SELL up), size floored, minimum size, price outside the tick range, a batch of 16 raises ValueError while 15 is ok, an unknown order blocks its token and side, a SELL may not exceed the position not already offered. test_b10_batch_offers_count_within_the_batch."
+  },
+  {
+   "ac": "B11 doctor",
+   "status": "met",
+   "evidence": "test_b11_no_flags_dry_run (exit 2, 0 venue calls, 0 signer calls). test_b11_all_pass (exit 0, wallet, deep and roundtrip all pass). test_b11_deep_order_that_fills_fails_and_cancels_all (FAIL plus one cancel-all). test_b11_round_trip_residual_fails (residual 5.0 after 2 sells). test_b11_cost_above_max_refused_before_any_order (0 calls). Also a wallet-failure test and a loader test."
+  },
+  {
+   "ac": "B12 signer",
+   "status": "met",
+   "evidence": "test_b12_sdk_signer_unavailable_in_main_venv raises LiveUnavailable with the exact [ops] message. The report gives the one-off command (research/spike/.venv ... -m trader.live.clob --signer-check), which ran with exit 0: our id equalled the SDK's EIP-712 hash in both cases, the signature recovers to the key, network_calls=0, posted=false, all under the spike's guard()."
+  },
+  {
+   "ac": "B13 user_ws against a local websocket server",
+   "status": "met",
+   "evidence": "test_b13_user_ws: the subscribe message carries apiKey, secret and passphrase from the env; connected goes True, then False when the server drops, then True after the reconnect; without the flags it raises LiveGuardError and the server sees 0 connections. The class is named UserWS (run() is the coroutine)."
+  },
+  {
+   "ac": "B14 no network, no secrets, no loop import, Phase 1 unmodified",
+   "status": "met",
+   "evidence": "The autouse loopback-only fixture is in place. test_b14 runs the A10 regex over all owned paths, including the report, and finds nothing; the shell greps are clean too. No trader.loop import under trader/live. Phase 1 mtimes all predate this build (started 17:47), except trader/loop.py, which WP1-F is editing in parallel; I never wrote to it."
+  },
+  {
+   "ac": "B15 report covers B6-B11 drills and the signer check, ends with How to reproduce",
+   "status": "met",
+   "evidence": "reports/phase2_execution.md sections 4-7 and 'How to reproduce'. Order ids are shortened in the report so it passes the secret grep."
+  },
+  {
+   "ac": "B16 tests pass",
+   "status": "met",
+   "evidence": "61 passed in tests/phase2/test_live_exec.py; 288 passed across tests/phase2 and trader/tests."
+  },
+  {
+   "ac": "B17 [ops] venue setup (SDK pinned in the trader venv, key permissions, session key, funding cap)",
+   "status": "operational_pending",
+   "evidence": "Needs the VM, keys and funds. No install was made here."
+  },
+  {
+   "ac": "B18 [ops] doctor's three steps pass on the real venue",
+   "status": "operational_pending",
+   "evidence": "Needs keys and the three flags. The smoke test suggests picking an extreme-probability strike: expected round-trip cost about $0.007, and 30 of 34 books were under the $0.25 cap."
+  },
+  {
+   "ac": "B19 [ops] dropped-ack and kill -9 drills on the real venue at 5-share size",
+   "status": "operational_pending",
+   "evidence": "Needs the live venue. Both drills pass on fakes (B7, B8)."
+  }
+ ],
+ "key_results": "- **Dropped-ack drill:** HALTED at exactly 30.0 s with source \"router\", one cancel-all, retries on that token and side refused, and the order resolved to cancelled after the cancel-all.\n- **kill -9 mid-batch drill (k=3):** 2 orders unknown after the restart, 0 reposted, and replay of the journal equals the router's memory.\n- **Doctor on the fake venue:**\n  - all pass: exit 0 (wallet ok, deep order live then cancelled with zero open, round trip cost 0.225, residual 0)\n  - deep order fills: FAIL plus one cancel-all\n  - round trip leaves a residual: FAIL with 5.0 shares left\n  - cost above the cap: refused with 0 venue calls\n  - no flags: exit 2 with 0 calls\n- **Signer check (spike venv):** our id equals the SDK's EIP-712 hash for both cases, the signature recovers to the key, zero network calls.\n  - The V2 signed order struct does not include the expiration, even though the expiration is sent with the order.\n- **Public smoke:** the doctor's market and book loaders work on real data. A tiny round trip costs $0.0067 on extreme BTC strikes, and 30 of 34 two-sided books were under the $0.25 default cap.",
+ "wiring_notes": "When all three flags are set, the loop builds this instead of PaperRouter:\n\n`LiveRouter(markets, L2Client(cli_live=args.live), SdkSigner(), trip=kernel.trip, journal=data/trader/live_journal.jsonl)`\n\nand keeps `router.starts` in sync with `kernel.starts`.\n\nOn every pass:\n- call `router.poll(now)` and send the fills it returns to the reconciler and ledger\n- run `UserWS(router.on_user_event, markets=cids, cli_live=True).run()` as an asyncio task; its `connected` flag is the `ws_connected` input to `health_failures`\n- call `router.reconcile_venue(client.open_orders())` on start and every minute; an empty list means the reconcile is clean\n\nWP2-A's warden gets three callables, all callable with no arguments:\n- `send = client.heartbeat`\n- `cancel_all = router.cancel_all`\n- `confirm_zero_open = router.confirm_zero_open`\n\nThe kernel's `ctx.open_orders` should come from `router.open_orders()`, which includes unknown orders. The doctor runs once, by hand, before the first live order, and writes into the same live journal. Paper and live must never run in one process, because PaperRouter refuses to start when ROSTER_LIVE is set.",
+ "open_issues": [
+  "The dispatch names the user channel `user_ws`; I built it as the class `UserWS` with a `connected` flag and an `async run()` coroutine. The auditor should look for that name.",
+  "SdkSigner fills the SDK's private tick-size cache (`_ClobClient__tick_sizes`) so signing makes no network call. If a future SDK version renames that cache, call `get_clob_market_info(cid)` once per market at startup instead. This is marked with a `ponytail:` comment in clob.py.",
+  "Taker (FAK) fills only become known through the user channel, or when poll queries the order after 5 s. The doctor has no user channel, so each of its two taker orders takes about 5 s.",
+  "For taker fills reported by the user channel, the fill price is the trade's reported `price`, not an average across the levels the order swept. Fills found by poll use the order's limit price, which is the worst case.",
+  "poll sends a cancel and a query on every call for each pending order. Unknown orders should be rare, but if the venue rate-limits, these calls need spacing out (also marked `ponytail:`).",
+  "The V2 signed order struct does not include the expiration (it is sent with the order but not covered by the signature). That is how the venue is designed, not something to fix here; it is noted in the report.",
+  "trader/loop.py keeps changing during this build because WP1-F is editing it in parallel. I never wrote to it, and no other Phase 1 file changed."
+ ]
+}

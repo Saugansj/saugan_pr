@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live BTC v4</title>
+<style>
+:root{--bg:#f6f5f3;--fg:#1c1917;--mut:#78716c;--line:#e7e5e4;--card:#fff;--pos:#15803d;--neg:#b91c1c;--warn:#b45309;--info:#1d4ed8;--soft:#f1f0ee}
+@media (prefers-color-scheme:dark){:root{--bg:#141210;--fg:#f5f5f4;--mut:#a8a29e;--line:#34302c;--card:#1f1c19;--pos:#4ade80;--neg:#f87171;--warn:#fbbf24;--info:#93c5fd;--soft:#2a2622}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-bottom:12px}
+h1{font-size:20px;margin:0}
+.pill{padding:4px 12px;border-radius:999px;font-weight:700;font-size:13px;color:#fff}
+.pill.running{background:#15803d}.pill.warmup{background:#1d4ed8}.pill.paused{background:#b45309}.pill.stopped{background:#57534e}
+.meta{color:var(--mut);font-size:12px;margin-left:auto}
+.why{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--mut);border-radius:10px;padding:10px 14px;margin-bottom:12px}
+.why.running{border-left-color:var(--pos)}.why.warmup{border-left-color:var(--info)}.why.paused{border-left-color:var(--warn)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:10px;margin-bottom:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.k{color:var(--mut);font-size:12px;margin-bottom:2px}
+.big{font-size:28px;font-weight:800;line-height:1.1}
+.sub{color:var(--mut);font-size:12px}
+.pos{color:var(--pos)}.neg{color:var(--neg)}.mutc{color:var(--mut)}
+.bar{height:10px;background:var(--soft);border-radius:6px;overflow:hidden;margin:8px 0 4px}
+.bar>i{display:block;height:100%;border-radius:6px}
+h2{font-size:15px;margin:18px 0 8px}
+.bets{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:10px}
+.bet{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.side{display:inline-block;font-weight:800;padding:2px 10px;border-radius:6px;color:#fff;margin-right:6px}
+.side.Up{background:#15803d}.side.Down{background:#b91c1c}
+.row{display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-top:4px}
+.feed{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--line);border-radius:10px}
+.feed li{padding:8px 12px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.feed li:last-child{border-bottom:0}
+.t{color:var(--mut);font-variant-numeric:tabular-nums;min-width:64px}
+.mv{font-weight:700;min-width:120px}
+.chip{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--soft)}
+.chip.pos{background:color-mix(in srgb,var(--pos) 18%,transparent)}.chip.neg{background:color-mix(in srgb,var(--neg) 18%,transparent)}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:block;overflow-x:auto}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
+th{color:var(--mut);font-weight:600;font-size:12px}
+svg{display:block;width:100%;height:70px}
+.empty{color:var(--mut);padding:12px;background:var(--card);border:1px dashed var(--line);border-radius:10px}
+.err{color:var(--neg);font-size:12px}
+footer{color:var(--mut);font-size:12px;margin-top:18px}
+a{color:var(--info)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="title">Live · BTC v4 · real money</h1>
+    <span id="pill" class="pill stopped">…</span>
+    <span id="tabs" style="display:flex;gap:6px;flex-wrap:wrap"></span>
+    <span class="meta" id="meta">loading…</span>
+  </header>
+  <div id="why" class="why">Loading the live bot's state…</div>
+  <div class="grid" id="cards"></div>
+  <h2>Open bets</h2>
+  <div id="open" class="bets"></div>
+  <h2>Signals (newest first)</h2>
+  <ul id="feed" class="feed"></ul>
+  <h2>Settled bets this session</h2>
+  <div id="done"></div>
+  <h2>Claimed into the wallet (auto-claim)</h2>
+  <div id="claims"></div>
+  <h2>Live vs the paper twin (all live sessions)</h2>
+  <div class="grid" id="cmp"></div>
+  <h2>Order speed (where the seconds go)</h2>
+  <div class="grid" id="speed"></div>
+  <footer>
+    A share pays $1 if its side wins and $0 if not: price 0.53 = the market's 53% chance. A buy spends 5 × its limit price;
+    filling cheaper gives extra shares (included here). bp = 0.01%. Times are IST. Winnings reach the wallet when you redeem
+    them on polymarket.com. Updates every 5 s · <a href="/">full dashboard</a>
+  </footer>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const fmt$ = (x, sign) => (x == null ? "" : (sign && x > 0 ? "+" : x < 0 ? "−" : "") + "$" + Math.abs(x).toFixed(2));
+const cls = x => x > 0 ? "pos" : x < 0 ? "neg" : "";
+const hm = ms => new Date(ms).toLocaleTimeString("en-GB", {timeZone: "Asia/Kolkata"});
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const left = ms => { if (ms <= 0) return "0:00"; const s = Math.round(ms / 1000); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
+let S = null, gotAt = 0;
+const ACCOUNT = new URLSearchParams(location.search).get("account") || "live";
+
+function chart(series, started, now) {
+  if (!series.length) return '<div class="sub">The curve starts at the first settled bet.</div>';
+  const pts = [[started, 0], ...series.map(p => [p[0], p[1]])], last = pts[pts.length - 1][1];
+  pts.push([Math.max(now, pts[pts.length - 1][0]), last]);
+  const t0 = pts[0][0], t1 = pts[pts.length - 1][0] || t0 + 1, ys = pts.map(p => p[1]), lo = Math.min(0, ...ys), hi = Math.max(0, ...ys);
+  const X = t => 4 + (t - t0) / Math.max(1, t1 - t0) * 292, Y = v => 64 - (v - lo) / Math.max(0.01, hi - lo) * 58;
+  let d = `M${X(pts[0][0])},${Y(pts[0][1])}`;
+  for (let i = 1; i < pts.length; i++) d += ` H${X(pts[i][0])} V${Y(pts[i][1])}`;
+  const col = last >= 0 ? "var(--pos)" : "var(--neg)";
+  return `<svg viewBox="0 0 300 70" preserveAspectRatio="none" role="img" aria-label="Session profit and loss over time">
+    <line x1="0" x2="300" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--line)" stroke-dasharray="3 3"/>
+    <path d="${d}" fill="none" stroke="${col}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+function render() {
+  if (!S) return;
+  const now = S.now + (Date.now() - gotAt);
+  $("title").textContent = `Live · ${S.label || S.account || "Account"} · BTC v4 · real money`;
+  $("tabs").innerHTML = (S.accounts || []).map(a => {
+    const on = a.id === (S.account || ACCOUNT);
+    return `<a class="chip ${on ? "pos" : ""}" href="/live?account=${esc(a.id)}" style="text-decoration:none">${esc(a.label || a.id)}</a>`;
+  }).join("");
+  $("pill").className = "pill " + S.state; $("pill").textContent = S.head;
+  $("why").className = "why " + S.state; $("why").textContent = S.why;
+  const sessLeft = S.ends ? S.ends - now : null;
+  $("meta").textContent = `updated ${hm(S.now)}` + (S.started ? ` · started ${hm(S.started)}` : "") +
+    (sessLeft != null && S.state !== "stopped" ? ` · session ends in ${left(sessLeft)}` : "") + (S.switch ? " · live switch ON" : "");
+  const value = S.cash0 == null ? null : S.cash0 + S.settled;
+  const used = S.limit ? Math.max(0, -S.settled) / S.limit : 0;
+  const stopCol = used >= 0.75 ? "var(--neg)" : used >= 0.4 ? "var(--warn)" : "var(--pos)";
+  $("cards").innerHTML = `
+    <div class="card"><div class="k">Session result (settled)</div>
+      <div class="big ${cls(S.settled)}">${fmt$(S.settled, true)}</div>
+      <div class="sub">${S.wins} won · ${S.losses} lost</div>${chart(S.series, S.started || S.now, now)}</div>
+    <div class="card"><div class="k">Daily stop: ${(S.daily_stop * 100).toFixed(0)}% = ${fmt$(S.limit)}</div>
+      <div class="big">${Math.round(used * 100)}%<span class="sub"> used</span></div>
+      <div class="bar"><i style="width:${Math.min(100, used * 100)}%;background:${stopCol}"></i></div>
+      <div class="sub">${S.settled < 0 ? fmt$(-S.settled) + " of " + fmt$(S.limit) + " lost" : "nothing lost yet"} ·
+        pauses at −${fmt$(S.limit)} settled</div></div>
+    <div class="card"><div class="k">Wallet (start → now, settled)</div>
+      <div class="big">${fmt$(value)}</div>
+      <div class="sub">started with ${fmt$(S.cash0)}${S.redeem ? ` · <b>redeem ${fmt$(S.redeem)}</b> of wins on polymarket.com` : ""}</div></div>
+    <div class="card"><div class="k">Open bets</div>
+      <div class="big">${S.open.length}</div>
+      <div class="sub">${S.open.length ? `${fmt$(S.open_cost)} at risk · if all win ${fmt$(S.best, true)}` : "none right now"}</div></div>`;
+  $("open").innerHTML = S.open.length ? S.open.map(b => {
+    const span = b.end_ms - b.start_ms, done = b.end_ms ? Math.min(1, Math.max(0, (now - b.start_ms) / span)) : 0;
+    const tl = b.end_ms ? b.end_ms - now : null;
+    return `<div class="bet"><div><span class="side ${esc(b.side)}">${b.side === "Up" ? "▲ UP" : "▼ DOWN"}</span>
+        <b>BTC ${esc(b.len)}</b> · ${esc(b.window)} IST</div>
+      <div class="bar"><i style="width:${(done * 100).toFixed(1)}%;background:var(--info)"></i></div>
+      <div class="row"><span>${tl == null ? "" : tl > 0 ? "settles in <b>" + left(tl) + "</b>" : "window closed · waiting for the result"}</span>
+        <span>bought ${hm(b.t)}</span></div>
+      <div class="row"><span>${b.shares.toFixed(2)} shares at ${b.price.toFixed(2)} · paid ${fmt$(b.cost)}</span>
+        <span>${b.bid != null ? "sell now " + b.bid.toFixed(2) : ""}</span></div>
+      <div class="row"><span class="pos">if ${esc(b.side)}: ${fmt$(b.win_pnl, true)}</span><span class="neg">if not: ${fmt$(b.lose_pnl, true)}</span></div></div>`;
+  }).join("") : '<div class="empty">No open bets. The bot buys when BTC moves about 0.06% in 2 seconds.</div>';
+  $("feed").innerHTML = S.feed.length ? S.feed.map(f => `<li><span class="t">${hm(f.t)}</span>
+      <span class="mv ${f.dir === "UP" ? "pos" : "neg"}">${f.dir === "UP" ? "▲" : "▼"} BTC ${f.bp > 0 ? "+" : ""}${f.bp.toFixed(1)} bp</span>
+      ${f.markets.map(m => `<span class="chip ${m.cls}">${esc(m.len)} ${esc(m.window)}: ${esc(m.res)}</span>`).join("")}</li>`).join("")
+    : '<li class="sub">No signals yet this session.</li>';
+  $("done").innerHTML = S.done.length ? `<table><tr><th>Bought</th><th>Bet</th><th>Price</th><th>Shares</th><th>Paid</th><th>Result</th><th>P&amp;L</th></tr>` +
+    S.done.map(b => `<tr><td>${hm(b.t)}</td><td>BTC ${esc(b.side)} · ${esc(b.len)} ${esc(b.window)}</td><td>${b.price.toFixed(2)}</td>
+      <td>${b.shares.toFixed(2)}</td><td>${fmt$(b.cost)}</td><td class="${b.won ? "pos" : "neg"}">${b.won ? "WON" : "lost"}</td>
+      <td class="${cls(b.pnl)}">${fmt$(b.pnl, true)}</td></tr>`).join("") + "</table>"
+    : '<div class="empty">Nothing settled yet this session.</div>';
+  const c = S.cmp;
+  $("cmp").innerHTML = c ? `
+    <div class="card"><div class="k">Live orders</div><div class="big">${c.orders}</div><div class="sub">${c.filled} filled</div></div>
+    <div class="card"><div class="k">Missed where paper filled</div><div class="big">${c.missed_paper_filled}/${c.paper_had}</div>
+      <div class="sub">lost races only: faster traders took the shares first</div></div>
+    <div class="card"><div class="k">Refused by Polymarket</div><div class="big">${c.refused}</div>
+      <div class="sub">not a race: the venue rejected the order</div></div>
+    <div class="card"><div class="k">Live paid more than paper</div><div class="big">${c.gap == null ? "–" : (c.gap > 0 ? "+" : "") + c.gap.toFixed(3)}</div>
+      <div class="sub">per share, both filled (n ${c.n_gap})</div></div>
+    <div class="card"><div class="k">Settled, live vs paper (same markets)</div>
+      <div class="big ${cls(c.live_pnl)}">${fmt$(c.live_pnl, true)}</div><div class="sub">paper ${fmt$(c.paper_pnl, true)} · judge after ~50 orders</div></div>`
+    : '<div class="empty">No live orders to compare yet.</div>';
+  $("claims").innerHTML = (S.claimed && S.claimed.length) || (S.claim_errors && S.claim_errors.length)
+    ? `<ul class="feed">` + S.claimed.map(c => `<li><span class="t">${hm(c.ts)}</span>
+        <span class="chip pos">claimed ${fmt$(c.value)}</span> ${esc((c.title || "").slice(-45))} · ${esc(c.outcome || "")}</li>`).join("")
+      + (S.claim_errors || []).map(c => `<li><span class="t">${hm(c.ts)}</span>
+        <span class="chip neg">claim failed, retrying in 10 min</span> <span class="sub">${esc((c.error || "").slice(0, 90))}</span></li>`).join("")
+      + "</ul>"
+    : '<div class="empty">Nothing claimed this session yet. With auto-claim on, wins are claimed into the wallet a few minutes after they settle.</div>';
+  const v = S.speed, ms = x => x == null ? "–" : Math.round(x) + " ms";
+  $("speed").innerHTML = v ? `
+    <div class="card"><div class="k">On this PC (signal → sent)</div><div class="big">${ms(v.pc_ms)}</div>
+      <div class="sub">signing + saving the order · median of ${v.n}</div></div>
+    <div class="card"><div class="k">Sent → Polymarket's answer</div><div class="big">${ms(v.post_ms)}</div>
+      <div class="sub">network + Polymarket (its 150 ms taker hold included)</div></div>
+    <div class="card"><div class="k">Sent → matched</div><div class="big">${ms(v.match_ms)}</div>
+      <div class="sub">from Polymarket's match_time · n ${v.n_match}</div></div>
+    <div class="card"><div class="k">Polymarket's answers</div>
+      <div class="sub">${Object.entries(v.status).map(([k, n]) => esc(k) + " × " + n).join("<br>") || "–"}</div></div>`
+    : '<div class="empty">Order timing starts with the next session (it was added on 15 Nov).</div>';
+}
+
+async function load() {
+  try {
+    const r = await fetch("/live.json?account=" + encodeURIComponent(ACCOUNT), {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    S = await r.json(); gotAt = Date.now(); render();
+  } catch (e) {
+    $("meta").innerHTML = `<span class="err">dashboard not answering (${esc(e.message)}): retrying</span>`;
+  }
+}
+load(); setInterval(load, 5000); setInterval(render, 1000);
+</script>
+</body>
+</html>

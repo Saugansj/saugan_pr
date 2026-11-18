@@ -1,0 +1,78 @@
+{
+ "summary": "I built WP3-A, the touch-market pricer and coherence bound, as a standalone pure module, and all 15 tests pass. A smoke run against today's real October touch markets worked too (public read-only GETs only).\n\nThe module has three parts:\n- `one_touch`: the exact GBM one-touch formula with log drift −σ²/2.\n- `touch_fair`: prices a market with κ(τ) taken from the registry through `ladder.kappa_for`. Above 24h it uses the 24h κ and flags it unfitted. It counts the barrier as touched from the running high or low, and returns `err` on any missing input or wrong kind.\n- `call_over_h`, `eps`, `bounds` and `coherence_flags`: the role-18 check that digital ≤ touch ≤ 2 × digital + ε. Up barriers carry the extra C(H)/H term in ε.\n\n`REGISTRY[\"touch\"]` (state candidate) and `PREREG` are plain dicts; nothing is written anywhere. The report is at `reports/phase3_touch.md` and ends with \"How to reproduce\".\n\nNothing outside the three owned paths was edited. The only network code is the `--smoke` path under `__main__`, and the tests never call it.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\growth\\touch.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase3\\test_touch.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase3_touch.md"
+ ],
+ "commands_run": [
+  ".venv\\Scripts\\python.exe -m pytest tests/phase3/test_touch.py -q  (from the roster code root)",
+  ".venv\\Scripts\\python.exe -m trader.growth.touch --smoke  (public GETs: Gamma events, Binance ticker and 1h klines, Deribit DVOL)",
+  "grep -nE 'urllib|http\\.client|httpx|websockets|socket|get_json' trader/growth/touch.py tests/phase3/test_touch.py  (only hits are inside _smoke)",
+  "grep -nE 'py_clob_client|eth_account|POST|api_key|secret|os\\.environ' on the three owned files  (no hits)",
+  "Ad-hoc python -c runs to compute the hand values, the C/H table, the worked examples and the MC numbers for the report"
+ ],
+ "tests_passed": true,
+ "test_output_tail": "...............                                                          [100%]\n15 passed in 13.46s",
+ "ac_self_check": [
+  {
+   "ac": "A1 hand values (3 or more) and identities to 1e-12 on a grid",
+   "status": "met",
+   "evidence": "test_hand_values: 3 cases, each worked out step by step in comments with N(a) and N(c), matching to 1e-9. test_identities_on_grid: 216 grid points checking touch_up = 2·digital + C/H and touch_down = 2·(1 − digital) − P/H to 1e-12, with C and P computed independently from erfc."
+  },
+  {
+   "ac": "A2 seeded MC (10,000 or more steps per path) within 3 SE + 0.01, one up and one down",
+   "status": "met",
+   "evidence": "test_monte_carlo: numpy GBM with drift −σ²/2, 10,000 paths × 10,000 steps, seed 7. Up: MC 0.5409 (SE 0.005) vs model 0.5518. Down: MC 0.3272 (SE 0.0047) vs model 0.3269. The mean of S_T/S_0 is within 1% of 1."
+  },
+  {
+   "ac": "A3 properties",
+   "status": "met",
+   "evidence": "test_properties covers: touched gives 1; τ ≤ 0 gives 0; the value goes to 1 as H approaches S; up decreases in H and increases in σ and τ; down increases in H; the value stays in [same-side digital, 1] on 2,000 random inputs; basis=b gives exactly the same result as H·b."
+  },
+  {
+   "ac": "A4 κ = 1.150 / 1.034 / 0.905 / 0.905 (10 days flagged unfitted), σ_P = κ·σ_Q, touched gives f = 1, missing inputs give err",
+   "status": "met",
+   "evidence": "test_touch_fair_kappa is parametrised at τ = 1h, 6h, 24h and 240h, with kappa_unfitted True only at 240h. test_touch_fair_touched_and_errors covers high ≥ H and low ≤ H giving f = 1, and err for a missing price, dvol, high, low or barrier and for a wrong kind."
+  },
+  {
+   "ac": "A5 bounds on 10,000 random inputs plus up-touch above 2 × digital; coherence_flags fires on both synthetic cases and is silent on a coherent pair",
+   "status": "met",
+   "evidence": "test_bounds_random: every point lies inside bounds(eps_tol=0), with 1e-12 float slack because the up upper bound equals the model algebraically. More than 90% of up-touches with H > S sit more than 1e-6 above plain 2 × digital. test_coherence_flags covers touch<terminal, touch>2x_digital+eps for up and down, the coherent pair, the threshold edge and an empty book."
+  },
+  {
+   "ac": "A6 REGISTRY['touch'] state candidate; PREREG has every listed field",
+   "status": "met",
+   "evidence": "test_registry_and_prereg checks state == 'candidate', the params kappa, sigma_rel_unc and eps_tol, and the PREREG fields name, hypothesis, statistic, cluster, se, alpha, pass_z, n, futility_z and futility_n."
+  },
+  {
+   "ac": "A7 report with the required sections, ending with 'How to reproduce'",
+   "status": "met",
+   "evidence": "reports/phase3_touch.md has the formulas, the ε finding with a C(H)/H table, the MC table, 4 worked examples, a live smoke table (21 of 39 markets shown; mean f − mid −0.023, mean absolute difference 0.030) and gaps/wiring notes. It ends with 'How to reproduce'."
+  },
+  {
+   "ac": "A8 rules R1–R4",
+   "status": "met",
+   "evidence": "R1: only the 3 owned files were created; the __init__.py files are untouched. R2: get_json is imported and used only inside _smoke under `if __name__ == '__main__' and '--smoke'`; the tests need no network. R3: the grep found no hits. R4: ladder's digital, kappa_for, sigma_q, KAPPA, H_MS, YEAR_H and ET are imported, not copied; there is one test file."
+  },
+  {
+   "ac": "A9 tests pass",
+   "status": "met",
+   "evidence": "15 passed in 13.46s"
+  },
+  {
+   "ac": "A10 [ops] Loop B (replay → shadow → canary → token), human-signed clearances for crypto-term:<ASSET>:touch-up and :touch-down, κ refit for τ > 24h",
+   "status": "operational_pending",
+   "evidence": "This needs running time and your signature via tools/clearance_cli.py. Nothing in this WP can do it."
+  }
+ ],
+ "key_results": "- **The ε finding is confirmed.** Under this model an up-touch equals 2 × digital + C(H)/H, so it always sits above 2 × digital. On month-long windows with near barriers, C(H)/H reaches about 0.052 (H/S 1.01, σ 0.5, 720h), far more than a 1-tick tolerance. So ε = C/H + eps_tol for up barriers and ε = eps_tol for down barriers.\n- **Monte Carlo agrees with the formula.** Up: MC 0.541 vs model 0.552, allowed gap 0.025. Down: 0.327 vs 0.327.\n- **Live smoke (2026-10-01 09:13Z, 39 BTC/ETH October touch markets, τ 739h with the unfitted κ 0.905).** The model follows the shape of the barrier ladder but sits about 2–3 points below the mid in the wings (mean f − mid −0.023, mean absolute difference 0.030). That fits fatter tails or a longshot premium in the market, and/or the 24h κ shrinking month-long vol. It is not evidence of an edge either way; the PREREG test decides.\n- **Caveat for wiring the upper bound.** The touch ≤ 2·digital + ε check is only valid when the digital settles at the window end. Monthly windows end at 00:00 ET on the 1st, while daily digitals settle at 12:00 ET, so only the lower check (touch ≥ digital) applies to today's monthly windows.",
+ "wiring_notes": "1. Pricing: in `trader/engines/ladder.py`, have `fair_value` (or `on_tick`'s kind filter) route `m.kind in ('touch-up', 'touch-down')` to `trader.growth.touch.touch_fair(m, ref[asset], now_ms, REGISTRY['touch']['params'])`. It returns f, unc, S, H, sigma_q, kappa, sigma_p, tau_h, basis, touched and kappa_unfitted, or `{'err': ...}`. Ladder also needs a `vol` key for the half-spread; compute it at wiring time the way ladder does, by bumping S.\n2. Running extremes: `marketdata` keeps the running Binance kline_1m high and low per touch window from WP3-C's `window_start_ms`, and puts them in `ref[asset]['high']` and `ref[asset]['low']`. Without them `touch_fair` returns err by design.\n3. Coherence: the arb scan calls `coherence_flags(touch_yes_book, digital_book, S, H, sigma_p, tau_h, up, params['eps_tol'])`. For a down-touch, digital_book is the NO book of the \"above $H\" market. Use the upper flag only when the digital settles at the window end; otherwise keep only 'touch<terminal'. Log the flags as arb_opportunity or data_fault records (log-only).\n4. Registry: write `REGISTRY['touch']` (candidate) and `PREREG` once through `Ledger.register` and `Ledger.preregister`. κ dict keys become strings after the JSON round-trip, so convert them to int before `kappa_for`.\n5. Provenance: the fair-value record (universe checkpoint) should carry basis and kappa_unfitted.\n6. Clearance templates: `crypto-term:<ASSET>:touch-up` and `crypto-term:<ASSET>:touch-down`.",
+ "open_issues": [
+  "A10 [ops]: Loop B (replay → shadow → canary → token), your signed clearances for the touch templates, and a κ refit for τ > 24h are all still pending.",
+  "For monthly windows the upper coherence check (touch ≤ 2·digital + ε) can only be wired once a digital settling at the window end exists. Today's daily digitals settle 12h before a monthly window ends.",
+  "Contract gap: MarketInfo has no window start, so the running high and low must come from the caller (WP3-C's window_start_ms). The current crawler does not discover touch events yet (slug what-price-will-<asset>-hit-in-<month>-<year>; WP3-C territory).",
+  "The PREREG uses n = 30 window clusters. There are only about 12 monthly windows a year per window type, so replay on past windows has to supply most of n. The human should confirm n and futility_n before the PREREG is written.",
+  "The smoke snapshot shows the model about 2–3 points below the mid in the wings with κ 0.905 at τ 739h. This is a reason to prioritise the κ refit for τ > 24h before any touch strategy is shadowed."
+ ]
+}

@@ -1,0 +1,22 @@
+# /etc/systemd/system/roster-recorder.service  (installed by ops/setup.sh)
+[Unit]
+Description=roster recorder: Polymarket market WebSocket + Deribit option snapshots (read-only, no keys)
+Wants=network-online.target
+After=network-online.target chrony.service
+
+[Service]
+Type=simple
+User=recorder
+Group=recorder
+WorkingDirectory=/srv/roster
+ExecStart=/srv/roster/.venv/bin/python -m recorder.recorder
+Restart=always
+RestartSec=5
+# Unbuffered so journalctl shows reconnects as they happen.
+Environment=PYTHONUNBUFFERED=1
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/roster/data
+
+[Install]
+WantedBy=multi-user.target

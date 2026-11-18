@@ -1,0 +1,108 @@
+{
+ "summary": "WP2-A is finished, picking up the previous builder's partial work. The earlier builder had already written heartbeat.py, clock.py, kill_all.py and the test file, and they were sound. Two things were left: one test was failing and the report did not exist. The failing test was A10 (no secrets in the owned paths): the tests built the kernel as `RiskKernel(secret=\"x\", ...)`, which counts as an assigned secret literal. The tests never use the human reset, so I removed that argument. I then wrote reports/phase2_safety.md from real runs on fakes plus one optional public clock smoke check. All 45 tests now pass with the no-network fixture in place. Nothing was placed, signed or cancelled, and no authenticated endpoint was called.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase2\\test_heartbeat.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase2_safety.md"
+ ],
+ "commands_run": [
+  ".venv/Scripts/python.exe -m pytest tests/phase2/test_heartbeat.py -q  (before the fix: 1 failed (A10), 44 passed; after: 45 passed)",
+  ".venv/Scripts/python.exe -m tests.phase2.test_heartbeat  (printed the freeze, network-cut and clock-skew drill numbers)",
+  "kill_all.py from the command line with fake L2 environment variables: dry run gave exit 2; with POLY_PRIVATE_KEY set it gave exit 3",
+  "scratchpad/kill_fake.py: kill_all.main against a local loopback fake CLOB, which gave exit 0 (signature matched the vector), and a sticky fake, which gave exit 1 after 8 cancel-alls at 14 s simulated",
+  "grep -nE \"^(import|from) \" tools/live_tools/kill_all.py  (stdlib only)",
+  "grep for 0x followed by 64 hex characters, and for assigned secret, passphrase or api_key literals, across the owned paths  (no hits)",
+  "optional public smoke: clock.sntp_offset against time.windows.com, pool.ntp.org and time.google.com, clock.measure(), and clock.clob_offset_ms()"
+ ],
+ "tests_passed": true,
+ "test_output_tail": ".............................................                            [100%]\n45 passed in 1.45s",
+ "ac_self_check": [
+  {
+   "ac": "A1 health_failures: healthy input gives [], and each single failing input names its check",
+   "status": "met",
+   "evidence": "test_a1_healthy_and_boundaries_pass, plus test_a1_each_check_fails_alone with 14 cases: tick, ws, reconcile, stale book, no book, unknown-status order with no book, stale feed, unknown feed over 10 s, journal, audit, clock over +1 s, clock under -1 s, clock unknown, halted. Each case returns exactly one entry. STALE_MS and LIVE are imported from trader.kernel."
+  },
+  {
+   "ac": "A2 warden sends only when healthy, chains the heartbeat id, returns False without raising when send raises",
+   "status": "met",
+   "evidence": "test_a2_sends_only_when_healthy_and_chains_ids: send receives ids ['', 'hb1', ...]; a ConnectionError gives False, errors == 1 and last_error 'send: ConnectionError'"
+  },
+  {
+   "ac": "A3 halt cadence every 2 s until confirmed; latch stopped at 10 s until rearm",
+   "status": "met",
+   "evidence": "test_a3_halt_cancels_every_2s_until_confirmed (cancels at [0, 2000, 4000], confirm called on every call until True); test_a3_unconfirmed_halt_latches_stopped_at_10s_until_rearm (cancels at 0 to 10 s, stopped at 10 s, a healthy end_of_tick sends nothing until rearm); test_a3_cancel_all_error_counts_as_not_confirmed"
+  },
+  {
+   "ac": "A4 freeze, negative control and network cut on a fake venue",
+   "status": "met",
+   "evidence": "freeze: zero after 9,000 ms with a 10 s venue and 14,000 ms with a 15 s venue; negative control gives passed=False; network cut: zero after 9,000 ms with 18 send errors and 0 heartbeats sent after the cut (tests test_a4_*)"
+  },
+  {
+   "ac": "A5 dead-man",
+   "status": "met",
+   "evidence": "test_a5_deadman: no env URL means no call; pings at 0, 61 and 121 s only, none on an unsent tick; errors swallowed and counted; the URL is absent from caplog, repr and return values, and only the host is logged"
+  },
+  {
+   "ac": "A6 SNTP with a fake socket",
+   "status": "met",
+   "evidence": "test_a6_offset_from_packet_and_rejects (offset 146 and delay 8 within 1 ms; Kiss-o'-Death, bad mode and zero transmit time rejected); test_a6_sntp_query_and_measure (measure returns None when every server fails, including with the default servers)"
+  },
+  {
+   "ac": "A7 clock gate with a real RiskKernel",
+   "status": "met",
+   "evidence": "test_a7_offset_levels (50/100/150/1000/1500 give A/A/R/R/H, positive and negative); test_a7_missing_stale_and_clob; test_a7_clock_gate_trips_real_kernel_once_per_rise (one trip per rise, from a PRIVILEGED source; REDUCING rejects BUY but not SELL; HALTED rejects both); test_a7_clock_skew_injection_drill"
+  },
+  {
+   "ac": "A8 failed audit write stops the heartbeat",
+   "status": "met",
+   "evidence": "test_a8_failed_audit_write_stops_heartbeat: a real AuditLog whose path is turned into a directory raises AuditWriteError, so audit_ok=False, failures == ['audit: last audit write failed'], end_of_tick returns False and send is never called"
+  },
+  {
+   "ac": "A9 kill_all.py",
+   "status": "met",
+   "evidence": "missing flag: exit 2 with 0 transport calls (6 cases); POLY_PRIVATE_KEY set: exit 3; against the fake server the DELETE /cancel-all POLY_SIGNATURE equals the vector qFXxB7_..., GET /data/orders confirms zero, exit 0; a venue that never empties gives exit 1 at 14 s simulated; capsys shows no credential values; a stdlib-only import test also passes"
+  },
+  {
+   "ac": "A10 no network in tests; no secrets in the owned paths",
+   "status": "met",
+   "evidence": "the autouse fixture patches socket.connect and socket.sendto to allow loopback only; test_a10_no_secret_in_owned_paths passes after removing the secret=\"x\" literal; the manual grep found no hits"
+  },
+  {
+   "ac": "A11 report covers the A4/A7/A8/A9 drills and ends with How to reproduce",
+   "status": "met",
+   "evidence": "reports/phase2_safety.md has a drill table with results for freeze, negative control, network cut, halt cadence, clock skew, clock thresholds, audit write and the kill script (dry run, refusals, fake server exit 0 and exit 1), plus the SNTP smoke check; its last section is How to reproduce"
+  },
+  {
+   "ac": "A12 tests in tests/phase2/test_heartbeat.py pass",
+   "status": "met",
+   "evidence": "45 passed in 1.45s"
+  },
+  {
+   "ac": "A13 [ops] freeze drill on the real venue",
+   "status": "operational_pending",
+   "evidence": "needs keys, the live venue and resting deep post-only orders"
+  },
+  {
+   "ac": "A14 [ops] network-cut drill on the real venue",
+   "status": "operational_pending",
+   "evidence": "needs keys and the live venue"
+  },
+  {
+   "ac": "A15 [ops] kill script live from the home PC",
+   "status": "operational_pending",
+   "evidence": "needs L2 credentials on the home PC"
+  },
+  {
+   "ac": "A16 [ops] external dead-man set up with an alert observed",
+   "status": "operational_pending",
+   "evidence": "needs a healthchecks.io check and ROSTER_DEADMAN_URL on the VM"
+  }
+ ],
+ "key_results": "- All 45 tests pass, with no network access.\n- **Freeze drill:** zero open orders 9.0 s after the freeze (venue cancelling after 10 s), and 14.0 s with a 15 s venue. The negative control correctly returns passed=False.\n- **Network cut:** zero open orders after 9.0 s. 18 heartbeat sends failed and none raised an exception.\n- **Clock skew:** 250 ms of skew puts both the gate and the kernel in REDUCING; 1,500 ms puts both in HALTED. When the clock recovers, the kernel stays HALTED until a human resets it.\n- **Failed audit write:** no heartbeat is sent on that tick.\n- **Kill script:** a dry run exits 2 and makes no calls. Against the fake server the signature matches the test vector and it exits 0. A venue that never empties gives exit 1 after 8 cancel-alls.\n- **Real-world finding:** this PC's clock is about 340 ms off three NTP servers (measured median 316 ms), so the clock gate reads REDUCING here. The trading VM must keep its clock synced before going live, or the kernel will sit in REDUCING.",
+ "wiring_notes": "At the end of each loop tick:\n1. `f = health_failures(now, tick_ms, ws_connected, reconcile_clean, router.orders, books, feed_age_ms, journal_ok, audit_ok, clock_offset_ms, kernel.state)`\n2. `sent = warden.end_of_tick(now, f)`\n3. While `kernel.state` is HALTED, call `warden.on_halted(now)`.\n4. `deadman.maybe_ping(now, sent)`\n\nThe warden's three callables come from WP2-B: `send` is the client's heartbeat (returning a dict with `heartbeat_id`), `cancel_all` is `LiveRouter.cancel_all`, and `confirm_zero_open` is `LiveRouter.confirm_zero_open`.\n\nA worker thread every 60 s runs `off = clock.measure()` (optionally also `clob_offset_ms()`), then `ClockGate(kernel).apply(*clock_gate(off, measured_at_ms, now, clob_off))`. Its latest offset is what the loop passes into `health_failures`.\n\n`warden.rearm()` belongs in the human reset path. `DeadMan()` reads `ROSTER_DEADMAN_URL` from the environment.\n\n`tools/live_tools/kill_all.py` is copied on its own to the home PC, with the four L2 variables set there, and run as `python kill_all.py --live --config live.json` with `ROSTER_LIVE=1`.\n\n`trader/live/live.json` does not exist yet (WP2-B owns it). A missing file means off.",
+ "open_issues": [
+  "Real-venue drills A13 to A16, plus the real-venue clock-skew and audit-write drills, are [ops].",
+  "This PC's clock is about 0.3 s off true time, so the clock gate would hold REDUCING here. The VM must be time-synced (chrony, or w32time with a short poll interval) before going live.",
+  "Contract gap, worked around as the dispatch notes: KernelContext has no clock or health fields, so health_failures and clock_gate take them as arguments.",
+  "kill_all.py checks credentials before the guard flags, so a dry run without L2 variables exits 3, not 2. This follows the dispatch ('a missing variable also means exit 3')."
+ ]
+}

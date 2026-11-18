@@ -1,0 +1,94 @@
+{
+ "verdict": "PASS_WITH_OPERATIONAL_PENDING",
+ "ac_results": [
+  {
+   "ac": "B1 hurdle hand values, 3-leg and 5-leg with rates 0.07/0.05/0, fee on every leg; <1 executable, >=1 not",
+   "status": "pass",
+   "command": "Read trader/growth/negrisk.py:135-136 and tests/phase3/test_negrisk.py:44-57; recomputed by hand; pytest re-run",
+   "evidence": "hurdle = sum(a + fees.fee(1,a,r)) + legging_budget, with zip(strict=True). My own computation: 3-leg 0.95+0.0147+0.012+0.01 = 0.9867; 5-leg 0.92+0.035455+0.005 = 0.960455; 5-leg-b 0.97+0.036941+0.005 = 1.011941. These match the test asserts. hurdle([.5,.5],[0,0],0) == 1.0 is refused in basket via `if h >= 1` (line 210; test_basket_refusals checks the 'hurdle 1.0000 >= 1' reason)."
+  },
+  {
+   "ac": "B2 eligibility fails closed (augmented/has_other True or None, non-negRisk leg, confirmation missing/expired/unsigned/tampered, leg added or rules changed); valid case eligible",
+   "status": "pass",
+   "command": "Read negrisk.py:100-130 and kernel.sign/verify (kernel.py:45-56); tests B2; build/phase-3/audit-tmp/WP3-B/probe.py",
+   "evidence": "Checks use `is not False` and `is True`, so None fails. The confirmation needs type=='negrisk-exactly-one-yes', verify() (HMAC over every field except sig; an empty secret gives False), key == {event_id, sorted cids, sorted rules_sha256, n_legs}, and an int expiry_ms > now. Probe results: the same legs under another event_id are stale; removing a leg is stale; a string or float expiry counts as expired; duplicate cids are ineligible; a JSON round trip (advice.db storage) and reordered legs stay eligible. Tests cover every listed case plus a foreign key, an empty secret and a wrong-type record."
+  },
+  {
+   "ac": "B3 evidence gate: 29 closed / 30 open; episode <= round trip doesn't count; ineligible, below-min-size, single-row don't count",
+   "status": "pass",
+   "command": "Read negrisk.py:162-190; test_gate_29_closed_30_open, test_episodes_that_do_not_count, test_scan_rows_feed_the_gate; probe case 8",
+   "evidence": "Episodes are maximal runs of qualifying rows per event, sorted by ts_ms. counts = rtt is not None and dur > rtt, with rtt = the largest in the run. Tests assert 29 gives (False,29) and 30 gives (True,30); eq (dur == rtt), single, nortt and split runs give counts False; ineligible, small, edge<=0 and no-ask rows give no episode. Probe: 30 events x 5 rows at the same timestamp give n_eligible 0, so duplicate rows cannot fabricate episodes."
+  },
+  {
+   "ac": "B4 basket refuses with reason when gate closed, replay_ref empty, ineligible, hurdle >= 1",
+   "status": "pass",
+   "command": "Read negrisk.py:195-211; test_basket_refusals",
+   "evidence": "Order: evidence(rows, n_min) is recomputed, then `not replay_ref`, then eligible(), then a missing ask, then h >= 1. Each returns ([], {reason}). The test asserts the reason prefixes 'evidence gate closed', 'no replay_ref', 'ineligible' (none, and expired) and 'hurdle 1.0000 >= 1'."
+  },
+  {
+   "ac": "B5 one BUY taker per leg at best ask, same size; size <= smallest best-ask, <= max_shares, floored; below largest leg min refused; worst_case_leg_loss hand example; over max_leg_loss refused",
+   "status": "pass",
+   "command": "Read negrisk.py:212-230, ladder.floor_to; tests B5; probe.py case 6 (20,000 random baskets, 2-6 legs, varied min_size/caps)",
+   "evidence": "size = floor_to(min(min sizes, max_shares, budget/planned), 0.01). By hand: 8.379 floors to 8.37; 5/0.9767 = 5.119 gives 5.11; worst = 8.37*(0.9767-0.25) = 6.082479, matching the test. Fuzz: 5,159 baskets emitted with 0 violations. Every one had same size on all legs, size <= min ask size, <= max_shares, size*planned <= budget, size >= max leg min_size, a 0.01 multiple, hurdle < 1, worst <= max_leg_loss, price == best ask, BUY, taker, reduces_exposure False."
+  },
+  {
+   "ac": "B6 completion completes missing legs within planned cost + legging budget, nothing beyond",
+   "status": "pass",
+   "command": "Read negrisk.py:233-262; test_completion_within_and_beyond_legging_budget; recomputed by hand; probe case 10",
+   "evidence": "Hand check: paid 6.082479 + 8.37*0.255 = 8.216829 <= limit 8.37*(0.9767+0.01) = 8.258679, so it completes c2 only. At 0.27 the total is 8.342379 > limit, giving 'legging budget exceeded'. A partial fill sends the remainder 3.37. When all legs are filled the result is 'complete'. Probe: SELL fills and fills on foreign cids are ignored. The kernel computes `reducing` itself (kernel.py:163, self.reduces), so completion's reduces_exposure=True cannot bypass REDUCING."
+  },
+  {
+   "ac": "B7 reports/phase3_negrisk.md with eligibility rule, hurdle, gate, status today CLOSED, optional unconfirmed counts, ends with How to reproduce",
+   "status": "pass",
+   "command": "Read reports/phase3_negrisk.md; re-ran the replay offline with sockets blocked (audit-tmp/WP3-B/replay_nonet.py); flags.py on the crawler snapshots",
+   "evidence": "All sections are present and the last section is '## How to reproduce'. The replay reproduces every number in the report: 1 file, 1,059 msgs, 1.9 min, 48 events with 3 legs each, 1,086 rows, rtt 210 + 1000 ms, GATE CLOSED 0/30, unconfirmed 0 edge>0, edge max -0.0367 / median -0.0597 / min -0.1440, lowest raw sum of asks 1.0100. flags.py confirms 144 legs, all neg_risk_augmented False and neg_risk_other False. Nothing is fabricated."
+  },
+  {
+   "ac": "B8 rules check R1-R4",
+   "status": "pass",
+   "command": "ls with full timestamps of trader/growth, tests/phase3, reports; sha256sum trader/contracts.py; grep R2/R3 patterns on module and test",
+   "evidence": "R1: WP3-B's files are negrisk.py (14:45:36), test_negrisk.py (14:45:47) and phase3_negrisk.md (14:46:56). Both __init__.py files are 0 bytes from 14:21:50, before the builder. The other growth files belong to WP3-A/C/D. trader/contracts.py sha256 1c0e3f29...68bf matches the Phase 1 baseline; advisor/contracts.py (14:21:48) and common.py (09-30) predate WP3-B. R2: no urllib/http.client/httpx/websockets/socket/get_json/requests matches; the replay is local-only (it ran with sockets blocked). R3: no py_clob_client/eth_account/POST/api_key/os.environ/LLM matches; 'secret' is only the HMAC argument and the test placeholder 'test-secret'. Modules return Intents and dicts only. R4: floor_to, SIZE_STEP, fee, taker_rate, sign, verify and Books are imported, not copied; one test file; the report ends with How to reproduce."
+  },
+  {
+   "ac": "B9 tests in tests/phase3/test_negrisk.py pass",
+   "status": "pass",
+   "command": ".venv\\Scripts\\python.exe -m pytest tests/phase3/test_negrisk.py -q ; also build/phase-3/audit-tmp/WP3-B/nonet.py (same tests with socket connect/getaddrinfo blocked)",
+   "evidence": "18 passed in 0.08s, both normally and with networking blocked."
+  },
+  {
+   "ac": "B10 [ops] >=30 real eligible opportunities > round trip, replay_ref, signed confirmations per event, then role 06 conversions and pre-registered test",
+   "status": "operational_pending",
+   "command": "Replay output (GATE: CLOSED 0/30)",
+   "evidence": "Needs the loop wired to log negrisk_scan rows, signed confirmations and calendar time. The gate is CLOSED today, as expected."
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "basket() passes caller rows straight to evidence() without dropping rows with ts_ms > now_ms, so future scanner rows can open the gate. Probe: 30 events of rows at NOW+10s gave basket(...) reason 'ok' at NOW. In the wired path Ledger.as_of(now) prevents this. A basket replay or backtest that passes the full scan log would have look-ahead.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\growth\\negrisk.py",
+   "fix_hint": "In basket(): ev = evidence([r for r in rows if r['ts_ms'] <= now_ms], params['n_min'])."
+  },
+  {
+   "severity": "minor",
+   "description": "The gate and hurdle trust caller params with no floor. params n_min=0 opens the gate with zero rows (probe 7b: reason 'ok'), and a negative legging_budget lowers the hurdle (probe 9: 0.995 for raw asks summing to 1.005). This matches the spec, since these are registry parameters, but it is a soft spot in a safety gate.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\growth\\negrisk.py",
+   "fix_hint": "Clamp n_min to at least PREREG['n'] (30) and legging_budget to at least 0 inside basket()/hurdle(), or refuse params that violate these."
+  },
+  {
+   "severity": "minor",
+   "description": "A completion remainder below the venue min size is emitted as is (disclosed by the builder with a ponytail: comment). The router would reject it and the basket stays legged until the legging timeout.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\growth\\negrisk.py",
+   "fix_hint": "When wiring completion, round the remainder up to the leg min_size within the legging budget check, or unwind."
+  },
+  {
+   "severity": "minor",
+   "description": "The B5 tests give every leg the same min_size (5.0), so they cannot tell 'largest leg minimum' apart from any leg minimum. The code uses max() correctly, and my fuzz with varied min_size confirmed it.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase3\\test_negrisk.py",
+   "fix_hint": "Add one basket case with leg min_sizes (1, 5, 15) and a size between 5 and 15, and assert it is refused."
+  }
+ ],
+ "rules_check": "R1 holds. WP3-B created only trader/growth/negrisk.py, tests/phase3/test_negrisk.py and reports/phase3_negrisk.md (mtimes 14:45-14:46). Both __init__.py files are 0 bytes from 14:21:50, the orchestrator's scaffolding. trader/contracts.py sha256 is 1c0e3f299907d5183368d0750db935e545d3c1b378545208b8f3d8e13cf768bf, the same as the Phase 1 audit baseline. advisor/contracts.py and common.py predate WP3-B. R2 holds: the grep for urllib/http.client/httpx/websockets/socket/get_json found nothing in the module or the test. The tests pass with socket connect and getaddrinfo blocked. The --replay path reads only local parquet, snapshots and rtt.jsonl, and it ran successfully with sockets blocked. R3 holds: no py_clob_client, eth_account, POST, api_key, os.environ or LLM vendor appears. 'secret' is only the HMAC argument passed to kernel.sign/verify and the test placeholder. The module returns Intents and dicts only. The kernel computes `reducing` itself and rejects the unknown strategy 'negrisk-arb' today, so the module fails closed. R4 holds: the helpers are imported (floor_to, SIZE_STEP, fee, taker_rate, sign, verify, Books); there is one test file; the report ends with 'How to reproduce'; the code is one 323-line module with no speculative abstractions. Sizes never round up: floor_to plus a 20,000-case fuzz found 0 violations. No AI output feeds edge or size. No secrets in files.",
+ "tests_rerun_output_tail": "..................                                                       [100%]\n18 passed in 0.08s\n(also 18 passed with socket connect/getaddrinfo blocked via build/phase-3/audit-tmp/WP3-B/nonet.py)",
+ "notes": "I verdict PASS_WITH_OPERATIONAL_PENDING. B1 through B9 pass on my own evidence, and B10 is the only open item ([ops]). There are no blocker or major defects. I found 4 minor ones: basket() does not filter out scan rows from after now_ms; n_min and legging_budget come from caller params with no floor; the builder-disclosed sub-minimum completion remainder; and a B5 test gap on mixed leg min_size.\n\nI recomputed the hand values in the tests myself and they match: hurdles 0.9867, 0.960455 and 1.011941, planned cost 0.9767, worst case 6.082479, and completion limit 8.258679. The replay reproduces every number in the report and the gate is CLOSED (0/30).\n\nScratch files, all under build/phase-3/audit-tmp/WP3-B/: probe.py (adversarial checks and the sizing fuzz), nonet.py (tests with networking blocked), replay_nonet.py (offline replay), flags.py (crawler flag counts). I did not modify any file in the code base.\n\nHow to reproduce: from C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster run\n.venv\\Scripts\\python.exe -m pytest tests/phase3/test_negrisk.py -q\n.venv\\Scripts\\python.exe build/phase-3/audit-tmp/WP3-B/nonet.py\n.venv\\Scripts\\python.exe build/phase-3/audit-tmp/WP3-B/probe.py\n.venv\\Scripts\\python.exe build/phase-3/audit-tmp/WP3-B/replay_nonet.py\n.venv\\Scripts\\python.exe build/phase-3/audit-tmp/WP3-B/flags.py\nsha256sum trader/contracts.py"
+}

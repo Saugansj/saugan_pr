@@ -1,0 +1,94 @@
+{
+ "verdict": "PASS_WITH_OPERATIONAL_PENDING",
+ "ac_results": [
+  {
+   "ac": "A1 Kalshi probs = hand-computed mids; an outcome with an empty side gives no snapshot",
+   "status": "pass",
+   "command": "pytest tests/phase4/test_sports_data.py (test_kalshi_*); build/phase-4/audit-tmp/WP4-A/probe_kalshi.py; read odds._kalshi_mid/parse_kalshi",
+   "evidence": "Best bids in the fixture books: ARS .72/.27, LEE .11/.88, TIE .17/.82, so H=(0.72+1-0.27)/2=0.725, matching the test. All 3 fixture books are byte-equal to the raw capture in data/sports/raw/kalshi/2026-10-01.jsonl (149 lines: 5 events + 144 books). Re-parsing the raw data offline gives 48 snapshots, the same as the report; prob sums are 0.96 to 1.015. When the NO side is empty, parse_kalshi returns None. Legacy cents books are also covered."
+  },
+  {
+   "ac": "A2 football-data closing PSC->BFEC->AvgC; close==open counts as missing; 2026/27 never PSC",
+   "status": "pass",
+   "command": "pytest (test_closing_*); probe_edges.py on the real matches.parquet",
+   "evidence": "The synthetic rows give books [PSC, BFEC, PSC, AvgC], and an all-missing row gives nothing. A UK local time in BST converts to UTC-1h. Real 2026/27: 250 rows, PSCH non-null 0, books returned {BFEC: 247, AvgC: 3}, PSC never returned. 2024/25 E0 returns PSC more than 300 times."
+  },
+  {
+   "ac": "A3 SGO/odds-api fixtures parse; no key -> error and zero fetch; fake key never stored in raw lines",
+   "status": "pass",
+   "command": "pytest (test_sgo_and_oddsapi_fixtures_parse, test_no_key_means_error_and_zero_fetch_calls, test_fake_key_never_stored_in_raw_lines); read odds._keyed/get_raw/_scrub",
+   "evidence": "Both fixtures carry a '_note' saying MOCK and naming the vendor doc shape. _keyed reads os.environ when the call is made and returns an error before any fetch. The test's fetch raises if called, and no jsonl is written. get_raw never writes headers, drops apiKey from params, and scrubs the key from the whole line and from error strings. The test's response body echoes the key, and the key is still absent from the 3 raw lines. env has no SPORTSGAMEODDS/ODDS_API_IO vars (grep count 0)."
+  },
+  {
+   "ac": "A4 schedule: T-24h, T-3h, lineup+10m each fire once at their time and not before; unknown lineup = start-60m and flagged",
+   "status": "pass",
+   "command": "pytest (test_schedule_*); read odds.due",
+   "evidence": "At t-1 the result is []; at t the label is returned; once it is in done_labels it is not returned again; nothing at or after start. With lineup None, lineup+10m is due at start-50m with lineup_assumed True. An overdue earlier label is superseded (documented design)."
+  },
+  {
+   "ac": "A5 mapping: real crawler rows -> right outcome/event_key; 2h off / team mismatch / 2 candidates -> unmapped; rule_flags",
+   "status": "pass",
+   "command": "pytest (test_mapping_*, test_team_names_normalize_across_sources); probe_smoke.py (fixture provenance)",
+   "evidence": "All 6 fixture rows equal real rows in data/markets/2026-10-01T084927Z.jsonl, trimmed to the needed fields. The parametrized refusals cover 2h off, team mismatch, home/away swap and 2 candidates. Flags are parsed from real rules text: the draw market truly says canceled -> \"Yes\", the win markets say \"No\"."
+  },
+  {
+   "ac": "A6 quota 80% routine / news to 100% / all refused at 100%; persists across instances; CLI report with all columns ending How to reproduce",
+   "status": "pass",
+   "command": "pytest (test_quota_*); python -m sports.odds quota --out build/phase-4/audit-tmp/WP4-A/phase4_quota.regen.md; diff; independent pandas recompute",
+   "evidence": "With limit 10: 8 routine allowed and the 9th refused; news is allowed up to 10, then refused; a second instance on the same file sees 10. The regenerated report is byte-IDENTICAL to reports/phase4_quota.md. My independent recompute matches: E0 2023-12 66 fixtures / 198 units, cumulative 7.9% ... F1 30.5%, all enabled. It has every listed column and an Assumptions section, and ends with How to reproduce."
+  },
+  {
+   "ac": "A7 WS and ESPN fixtures parse to GameState; cancel rule fires on changed start, early in_progress, postponement, stale; not on an on-time game",
+   "status": "pass",
+   "command": "pytest (test_espn_and_ws_fixtures_parse, test_cancel_rule_fires_and_holds, test_feed_age_under_sports); probe_edges.py",
+   "evidence": "The ESPN fixture event ids, dates and statuses equal a raw eng.1 response. The captured WS frames have the same 9-key set as all 53 raw frames, and the soccer-shaped frames are labelled as shaped. All 4 triggers fire, and the on-time, within-60s, normal in-play and 119s cases hold. feed_age_ms 'sports' is the oldest of espn and polymarket-ws and is absent until both have reported (fail closed; pulls.py treats None as stale). Minor gap: a kickoff moved to another UTC date is missed (see defects)."
+  },
+  {
+   "ac": "A8 early-start drill cancels only that game's orders",
+   "status": "pass",
+   "command": "pytest test_early_start_drill_cancels_only_that_game; read gamestate.cancel_game",
+   "evidence": "a0, a1, a2 and a9 (partial) are cancelled; b0-b2 (the other game) and x1 (another market) stay open. FakeRouter.submit raises. cancel_game only calls router.cancel for orders whose intent.cid is in the signal's cids."
+  },
+  {
+   "ac": "A9 smoke: Kalshi markets+books, ESPN scoreboard, >=60 s Polymarket sports WS, map today's crawler rows; report counts, mapped/unmapped, unreachable sources",
+   "status": "pass",
+   "command": "build/phase-4/audit-tmp/WP4-A/probe_smoke.py (offline re-derivation from data/sports/raw and the crawler snapshot); read reports/phase4_sports_smoke.md",
+   "evidence": "Re-derived offline, no network: Kalshi 48 snapshots; ESPN 25 lines -> 48 games, all scheduled; ESPN+Kalshi mapping 144 markets / 48 events / 0 unmapped; Kalshi-only 144/48/0; outcomes H/D/A 48 each; flag counts match. All of this equals the report. WS: 53 frames from 09:42:29 to 09:43:37 inside the 75 s window (ESPN ended 09:42:23 and the report ends 09:43:38). Leagues match the report, and none are ours. SGO and odds-api are stated as not run (no keys). The report ends with How to reproduce."
+  },
+  {
+   "ac": "A10 pytest tests/phase4/test_sports_data.py passes with autouse socket guard",
+   "status": "pass",
+   "command": ".venv\\Scripts\\python.exe -m pytest tests/phase4/test_sports_data.py -q -p no:cacheprovider; build/phase-4/audit-tmp/WP4-A/test_guard_probe.py",
+   "evidence": "23 passed in 2.54s. The autouse no_network fixture patches socket.socket.connect. My probe imported that fixture and confirmed it makes O.http_get, gamestate.listen_ws (websockets) and kalshi_snapshots fail with 'network disabled in unit tests'. The data/sports listing and the sha256 of raw files and reports are unchanged after the test run."
+  },
+  {
+   "ac": "A11 [ops] live SGO and odds-api.io with real keys; verify live shapes; quota projection in the Phase 1 daily report",
+   "status": "operational_pending",
+   "command": "env | grep -ci 'SPORTSGAMEODDS|ODDS_API_IO' -> 0",
+   "evidence": "No keys exist on this machine. The parsers have only been tested on fixtures labelled MOCK. Wiring into nightly/report.py belongs to the Phase 1 integration."
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "cancel_signal matches a GameState to its MarketMaps only by exact event_key, and event_key embeds the kickoff UTC date. If ESPN reports a kickoff moved to a different UTC date, the state gets a new key and no signal fires, even when the status is in_progress before the mapped start. Probe: the start moved 24h earlier gives event_key E0:arsenal:leeds:2026-10-09, and cancel_signal returns None for both 'scheduled' and 'in_progress'. A 3h move on the same date fires correctly. The WS receive-date key (already noted by the builder) is the same class of gap. Exposure is limited by rarity, the start-5min GTD expiry and remapping.",
+   "file": "sports/gamestate.py",
+   "fix_hint": "Select maps by (league, norm_team(home), norm_team(away)) with a start within a few days, instead of exact event_key equality. Add one test with the start moved to the previous day."
+  },
+  {
+   "severity": "minor",
+   "description": "parse_espn falls back to the coarse ESPN state for an unknown status name: 'pre' -> scheduled, 'post' -> final. So a new halt-type status, for example STATUS_TBD with state pre or a forfeit with state post, would not trigger a cancel. The code comment says unknown statuses fail closed, but that only holds when the state is also unknown.",
+   "file": "sports/gamestate.py",
+   "fix_hint": "Fall back to the state only for 'in'. Map any other unknown name to 'suspended', or correct the comment."
+  },
+  {
+   "severity": "minor",
+   "description": "sgo_snapshots and oddsapi_snapshots default to quota=None, which means no quota check at all. A wiring that forgets to pass a Quota bypasses the 80%/100% fail-closed book for the keyed sources.",
+   "file": "sports/odds.py",
+   "fix_hint": "Default the quota to Quota() (data/sports/quota.json), so callers have to opt out explicitly."
+  }
+ ],
+ "rules_check": "Paper and no auth: odds.py makes only GETs: Kalshi public, ESPN public, the public Polymarket sports WS, and SGO/odds-api only when an env key is present, and none exists. There is no POST, signing or order submission anywhere. gamestate.cancel_game only calls router.cancel through the Router protocol and is tested on a FakeRouter whose submit raises. No LLM or vendor calls. Credentials: env only, read when the call is made (_keyed), and never written: headers are not stored, apiKey is dropped from params, and the line and errors are scrubbed. A grep for secrets over the owned paths and data/sports found nothing, and the raw files contain no apiKey or X-Api-Key. Tests: no network (guard verified effective against httpx and websockets); they write only to tmp_path (data/sports and report hashes unchanged after the run). No look-ahead: football-data closes are CLV only, with obs=kickoff. No sizing code. Results are not fabricated: the smoke report numbers and the quota report reproduce exactly from raw data and the parquet. Owned paths: the builder's files_changed (sports/odds.py, sports/gamestate.py, tests/phase4/test_sports_data.py, reports/phase4_quota.md), plus the fixtures, the smoke report and data/sports/raw, are all inside WP4-A's paths. No other code imports WP4-A modules; sports/pulls.py (WP4-B) only reads the 'sports' feed key. Contracts: trader/contracts.py sha256 1c0e3f29...68bf equals the hash recorded in the Phase 1 audits; the mtimes of advisor/contracts.py (14:21:48, dispatch setup) and common.py (2026-09-30) predate the WP4-A edits. Both reports end with 'How to reproduce'. Minimal code: two modules (482 and 210 lines) and one test file, no speculative abstractions. The ponytail comments mark known ceilings (no lock on the quota file, SGO charging `limit` up front, Kalshi occurrence-3h, the WS receive-date key).",
+ "tests_rerun_output_tail": ".......................                                                  [100%]\n23 passed in 2.54s",
+ "notes": "Verdict PASS_WITH_OPERATIONAL_PENDING: A1-A10 pass with evidence, only A11 [ops] remains, and no blocker or major defects were found. The three minor defects are listed for a fixer, none required for the verdict.\n\nVerified independently, beyond the builder's claims:\n- The builder's feed_age fix: 'sports' is now the oldest feed, and absent until every feed has reported.\n- The fixtures are real captures: the Kalshi books are byte-equal to the raw file; the ESPN event ids, dates and statuses match a raw eng.1 response; the crawler rows are real rows trimmed to the needed fields.\n- The quota report regenerates byte-identical.\n- The smoke counts re-derive exactly from the raw data.\n\nWiring cautions, outside WP4-A's scope:\n1. The stale trigger in cancel_signal only works if the loop re-checks the last stored state for each mapped event on a timer. Called only 'on every GameState update', as the dispatch and wiring notes say, recv_ms always equals now, so the stale trigger never fires. Feed-level staleness is still covered by 'sports' in feed_age_ms and pulls.py.\n2. http_get uses follow_redirects=True. httpx strips only Authorization on a cross-origin redirect, so a vendor redirect would forward the SGO X-Api-Key header. Consider follow_redirects=False for keyed calls.\n3. sgo_snapshots charges `limit` units per call. If the recorder calls it once per due label, usage will far exceed the 3-units-per-event projection. This fails closed, but it wastes quota.\n4. The Polymarket WS soccer league codes (epl/lal/bun/sea/fl1) have not been seen live yet; ESPN covers game state in the meantime.\n\nHow I ran pytest: with -p no:cacheprovider and PYTHONDONTWRITEBYTECODE=1, so the code base was not touched.\n\nScratch files (all under C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\build\\phase-4\\audit-tmp\\WP4-A\\):\n- probe_kalshi.py\n- probe_smoke.py\n- probe_edges.py\n- test_guard_probe.py\n- phase4_quota.regen.md\n- before.txt, after.txt, sha_before.txt"
+}

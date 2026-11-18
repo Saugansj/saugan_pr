@@ -1,0 +1,94 @@
+{
+ "verdict": "PASS_WITH_OPERATIONAL_PENDING",
+ "ac_results": [
+  {
+   "ac": "D1 Prefilter: no tracked name or no keyword -> no gateway call; a match -> exactly one call",
+   "status": "pass",
+   "command": "pytest tests/phase4/test_sentinel_loop_a.py::test_prefilter_calls_llm_only_on_name_and_keyword; .venv\\Scripts\\python.exe -B build\\phase-4\\audit-tmp\\WP4-D\\probe_sentinel.py (probes 1, 3, 7); read advisor/sentinel.py:17-66",
+   "evidence": "All 14 dispatch keywords (out ... abandoned, incl. 'ruled out', 'starting XI') each cause exactly 1 call with the right event_key. Texts with no keyword or only partial words ('Arsenalfan injured', 'Outlook', 'shoutout', 'without') cause 0 calls. An item naming two games causes 1 call and 2 pulls. Call is gateway.complete('25-sports-news', prompt, SCHEMA, vendors=1); SCHEMA requires material(bool)/team(str)/kind(enum). The prompt holds no url, source family or timestamps (probe 7)."
+  },
+  {
+   "ac": "D2 Material -> pull for right event_key, resume_requires_fresh_observation=True, shrink<=1; LLM/parse failure -> pull",
+   "status": "pass",
+   "command": "pytest (test_material_news_pulls_the_right_event, test_llm_or_parse_failure_pulls x5, test_non_material_changes_nothing); probe_sentinel.py probes 2, 5",
+   "evidence": "Pull has scope=event_key, action='pull', shrink_factor=0.0, expires_ms=start_ms, resume_requires_fresh_observation=True, reason '<kind>, <family>', and comes with refresh request {event_key, priority:'news'}. Probe 2: empty result list, ok=False, a raised exception, material=1 (int, not bool), team=3 and a non-dict all pull with 'llm-failure' (sentinel.py:103-112 catches Exception, checks types). A 3000-trial random fuzz: on_news only ever emits action='pull' with shrink in [0,1]."
+  },
+  {
+   "ac": "D3 Resume drill: none at +1h/+23h without obs; obs not later than news doesn't resume; later does; newer news re-arms",
+   "status": "pass",
+   "command": "pytest test_resume_only_after_fresh_observation, test_news_time_is_max_of_published_and_received; probe_sentinel.py probes 5, 6; mutation run",
+   "evidence": "The resume path is only on_sharp_observation (sentinel.py:94-101), which needs obs_ms > news_ms[scope]. No code path resumes on time. The fuzz model checks a resume happens only when obs > latest pulling-news time, and that set(active) matches the model in all 3000 trials. Probe 6: a late-arriving item with an older timestamp does not lower the bar. Mutating '<=' to '<' is caught by the tests."
+  },
+  {
+   "ac": "D4 Disagreeing source families keep the pull and are flagged",
+   "status": "pass",
+   "command": "pytest test_disagreeing_families_keep_pull_and_flag[both orders]; probe_sentinel.py probe 4",
+   "evidence": "Both orders leave active[ARS].action=='pull' with reason 'injury, bbc; sources disagree'. Probe 4: non-material verdicts from 3 families after a pull never lift it. Mutating out the flag is caught by the tests."
+  },
+  {
+   "ac": "D5 Blend fit recovers a,b,c on 300 synthetic clusters; c in [0,1] when data imply c>1 or c<0; <100 clusters -> None",
+   "status": "pass",
+   "command": "probe_loop_a.py probe 1; reproduced builder numbers with fit_blend(synth(300))",
+   "evidence": "Mean over 10 independent seeds: true (0.2,0.9,0.6) -> (0.197,0.904,0.613); (-0.3,1.1,0.3) -> (-0.301,1.099,0.314); (0,1,0.9) -> (0.003,1.006,0.917); sd 0.02-0.05. True c in {1.8, 3.0, -0.8, -3.0} fits inside [0,1] (L-BFGS-B bounds at loop_a.py:43). fit_blend(99 clusters) and fit_blend([]) are None; 100 clusters fits. Builder's figures (0.172, 0.859, 0.507) reproduce exactly."
+  },
+  {
+   "ac": "D6 Switch: 0.3 below 100 clusters; candidate c = bootstrap lower quantile, <= point, in [0,1]; candidate dict; no registry write/promote in loop_a.py",
+   "status": "pass",
+   "command": "pytest test_c_switch; probe_loop_a.py probe 2; grep -niE \"promot|regist|\\.record\\(|sqlite|open\\(\" learning/loop_a.py",
+   "evidence": "The grep exits 1 (no matches). c_candidate(synth(300)) = {'name':'kelly-c','params':{'c':0.4748,'quantile':0.2,'n_clusters':300},'state':'candidate'}. Bootstrap gives (0.4748, point 0.5071), which reproduces the claim. At c=0.95 the candidate's c is 0.9597 with point 1.0, and 0.9398 with point 0.9846. c_in_force returns 0.3 for None, {}, NaN, -0.1 and 1.7. Its input shape matches trader/ledger.py registry_live ({name, version, params})."
+  },
+  {
+   "ac": "D7 Refit gate: accepted only with >=100 clusters and gain > 2 cluster-robust SE; per-row-significant but not per-cluster -> rejected",
+   "status": "pass",
+   "command": "pytest test_refit_gate, test_refit_step_takes_candidate_only_when_gate_passes; probe_loop_a.py probe 4; mutation run",
+   "evidence": "Gain and SE match a hand loop over clusters (mean of per-cluster sums; std(ddof=1)/sqrt(n)). In the correlated case the naive row t is about 7.7 but the gate rejects (0.01 < 2*0.0091). 99 clusters is rejected. A NaN loss is rejected (fails closed). Mutations dropping n>=100 or using gain>0 are both caught."
+  },
+  {
+   "ac": "D8 Anchor rule property over 10,000 random refit chains; straddle -> mid; spread = wider",
+   "status": "pass",
+   "command": "pytest test_anchor_rule_property_over_random_refit_chains, test_chain_of_real_refits_cannot_raise_edge_past_anchor; probe_loop_a.py probe 3 (exhaustive 61^3 grid)",
+   "evidence": "All 226,981 (anchor, current, mid) grid triples give |p-mid| <= |anchor-mid| and keep p between mid and anchor. Six real accepted refit_step refits (0.55 -> 0.85) leave anchored_p at 0.55. Mutations to the straddle branch, the nearer choice and max->min are all caught. Minor: a NaN anchor returns current (see defects)."
+  },
+  {
+   "ac": "D9 Walk-forward: no test row resolves before any training row; no cluster on both sides",
+   "status": "pass",
+   "command": "pytest test_walk_forward_split; probe_loop_a.py probe 5",
+   "evidence": "Train = resolved_ms < t_split; test = resolved_ms >= t_split from clusters not seen in train (loop_a.py:110-114). In a fixture where every cluster straddles the split, the test set is empty and there is no overlap. Removing the cluster exclusion is caught by the tests."
+  },
+  {
+   "ac": "D10 pytest tests/phase4/test_sentinel_loop_a.py -q passes with autouse socket guard",
+   "status": "pass",
+   "command": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\.venv\\Scripts\\python.exe -m pytest tests/phase4/test_sentinel_loop_a.py -q",
+   "evidence": "20 passed in 9.83s. The autouse fixture no_network (test file lines 28-32) patches socket.socket.connect to raise, and test_guard_blocks_network proves it. Whole tests/phase4 folder: 102 passed in 23.41s."
+  },
+  {
+   "ac": "D11 [ops] c switch after 100 resolved clusters via registry promotion with human token; live news sources through role 13",
+   "status": "operational_pending",
+   "command": "n/a (needs calendar time, the human token and role 13's news collector, which is not built in Phase 4)",
+   "evidence": "The code side is ready: c_candidate returns a registry candidate dict, and c_in_force reads the registry_live shape. Promotion and live sources are operational."
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "anchored_p fails open on non-finite input. anchored_p(nan, 0.9, 0.5) returns 0.9 (the unbounded current), and anchored_p(0.55, nan, 0.5) returns nan. Both comparisons are False with NaN, so the else branch returns p_current. A chain of refits cannot cause this, because the anchor never moves in Loop A, so it cannot ratchet edge. But a buggy or missing anchor value at wiring time would silently bypass the bound.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\learning\\loop_a.py",
+   "fix_hint": "At the top of anchored_p, return mid if any input is not finite: `if not all(map(math.isfinite, (p_anchor, p_current, mid)))`. Do the same in anchored_spread, or let it raise."
+  },
+  {
+   "severity": "minor",
+   "description": "Family verdicts are never cleared for games that are never pulled, and stale ones persist. A non-material 'sky' verdict from 40h earlier makes an unrelated later material 'bbc' item read 'injury, bbc; sources disagree' (probe 8). The pull itself is correct, so the impact is a misleading flag plus unbounded growth of self.verdicts.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\advisor\\sentinel.py",
+   "fix_hint": "Clear verdicts[k] when a new pull starts on a game with no active pull, or key verdicts by news window. Optional."
+  },
+  {
+   "severity": "minor",
+   "description": "Test gap: nothing tests out-of-order news arrival, where a later-received item carries an older timestamp. Replacing `max(self.news_ms.get(k, t), t)` with `t` survives the whole test file. The code is correct today (auditor probe 6).",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase4\\test_sentinel_loop_a.py",
+   "fix_hint": "Add one assert: news at T0+10h, then news stamped T0+2h, then an observation at T0+5h returns None."
+  }
+ ],
+ "rules_check": "Orders and authenticated endpoints: none. The two modules import only re, unicodedata, advisor.contracts, numpy and scipy (grep for socket, http, urllib, requests, environ, subprocess and vendor names finds nothing). No three-flag guard is needed because there is no authenticated path. LLM: only through an injected Gateway; tests use FakeGateway; no vendor call. Network: the autouse socket guard is present and proven, and no test needs the network. AI cannot raise edge or size: the sentinel emits only action 'pull' with shrink 0.0, or a resume driven by a sharp observation timestamp, never by LLM output. A non-material LLM verdict cannot lift a pull (fuzz plus probe 4). It never emits a size or price. In Loop A, c stays in [0,1], the candidate c is at most the point estimate, and c_in_force rejects out-of-range or NaN values for 0.3. Look-ahead: walk_forward trains only on rows resolved before t_split and drops straddling clusters from test. Owned paths: WP4-D files are advisor/sentinel.py, learning/loop_a.py and tests/phase4/test_sentinel_loop_a.py; no other file is attributable to WP4-D. advisor/contracts.py (14:21:48), trader/contracts.py (12:11) and common.py (09-30) predate WP4-D's files (14:38-14:41). learning/__init__.py and advisor/__init__.py were created by the orchestrator at 14:21:50. No secrets (grep is clean; the test url is example.invalid). Reports: the dispatch gives WP4-D no report path and none was written, so 'How to reproduce' does not apply. Minimal code: 112 + 127 lines, no speculative abstractions, one test file. Builder figures (fit 0.172/0.859/0.507; candidate c 0.4748 against point 0.5071) reproduced exactly, so nothing is fabricated.",
+ "tests_rerun_output_tail": "....................                                                     [100%]\n20 passed in 9.83s\n(tests/phase4 folder: 102 passed in 23.41s)",
+ "notes": "All code-level criteria D1 to D10 pass. D11 is [ops] (calendar time, the human token, role 13), so the verdict is PASS_WITH_OPERATIONAL_PENDING. I found three minor defects and no blocker or major ones.\n\nMutation check: I made 15 mutants of scratch copies, since deleted. The tests caught 14. The survivor is the out-of-order news-time max, which is a test gap; the code is correct.\n\nThe builder's judgement calls are acceptable:\n- refit_step scores raw current against candidate and never uses the anchor; the bound is applied at use time by anchored_p.\n- c_candidate uses min(lower quantile, point). This equals the lower quantile on all observed data and is cautious otherwise.\n- Rows exactly at t_split go to the test set; D9 still holds.\n\nThe refit gate accepts a tiny improvement when it is perfectly consistent across clusters (se close to 0). That is correct significance-test behaviour, not a defect.\n\nScratch probes:\n- C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\build\\phase-4\\audit-tmp\\WP4-D\\probe_sentinel.py\n- C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\build\\phase-4\\audit-tmp\\WP4-D\\probe_loop_a.py\n\nHow to reproduce (from the code root):\n- .venv\\Scripts\\python.exe -m pytest tests/phase4/test_sentinel_loop_a.py -q\n- .venv\\Scripts\\python.exe -B build\\phase-4\\audit-tmp\\WP4-D\\probe_sentinel.py\n- .venv\\Scripts\\python.exe -B build\\phase-4\\audit-tmp\\WP4-D\\probe_loop_a.py\n- grep -niE \"promot|regist|\\.record\\(|sqlite|open\\(\" learning/loop_a.py (expect no output)"
+}

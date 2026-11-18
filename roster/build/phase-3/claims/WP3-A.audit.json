@@ -1,0 +1,82 @@
+{
+ "verdict": "PASS_WITH_OPERATIONAL_PENDING",
+ "ac_results": [
+  {
+   "ac": "A1 one_touch matches 3+ hand values; identities touch_up = 2*digital_up + C/H and touch_down = 2*digital_down - P/H to 1e-12 on a grid",
+   "status": "pass",
+   "command": "pytest tests/phase3/test_touch.py (test_hand_values, test_identities_on_grid); build/phase-3/audit-tmp/WP3-A/verify.py (independent reflection-principle formula via scipy.stats.norm)",
+   "evidence": "3 hand cases are worked out in the test comments. My independent reference matches them: 0.48206911760 (diff 3.6e-12), 0.35979604802 (diff 1.2e-10, inside the test's 1e-9), 0.55184433304 (diff 4e-11). On 5,000 random inputs, max |one_touch - reflection reference| = 1.6e-15. The identity test covers 216 grid points at 1e-12, with C and P computed separately from erfc."
+  },
+  {
+   "ac": "A2 seeded MC (numpy GBM, drift -sigma^2/2, >=10,000 steps per path) within 3 SE + 0.01, one up and one down",
+   "status": "pass",
+   "command": "pytest test_monte_carlo; python -c 'from tests.phase3.test_touch import mc_touch ...'; verify.py mc_bridge (Brownian-bridge MC, seed 123, 200k paths)",
+   "evidence": "The test MC is 10,000 paths x 10,000 steps, seed 7. Up: 0.5409 (SE 0.005) vs model 0.5518. Down: 0.3272 (SE 0.0047) vs model 0.3269. Mean S_T/S0 is 0.9965 and 0.9984. I reproduced these numbers exactly. My separate bridge-corrected MC, which has no discrete-monitoring bias, agrees within 1 SE at 4 settings: z = 0.87, 0.42, 0.96, 0.78."
+  },
+  {
+   "ac": "A3 properties: touched->1, tau<=0->0, ->1 as H->S, monotonicity in H/sigma/tau, in [same-side digital,1], basis equivalence",
+   "status": "pass",
+   "command": "pytest test_properties; code read of one_touch lines 58-71",
+   "evidence": "Each property is asserted, including 2,000 random points inside [digital - 1e-12, 1] and exact equality one_touch(basis=b) == one_touch(H*b) for both up and down. In the code, Hb = H*basis, the touched / at-or-beyond-barrier check comes first, and tau<=0 returns 0."
+  },
+  {
+   "ac": "A4 touch_fair kappa = 1.150/1.034/0.905/0.905 at 1h/6h/24h/10d (10d flagged unfitted), sigma_P = kappa*sigma_Q, running extreme beyond H -> f=1, missing inputs or wrong kind -> err",
+   "status": "pass",
+   "command": "pytest test_touch_fair_kappa, test_touch_fair_touched_and_errors; verify.py kappa probes",
+   "evidence": "Parametrised at 1, 6, 24 and 240h, with kappa_unfitted True only at 240h. My probes: 12.0001h gives 0.905, 11.9999h gives 1.034, 24h is not flagged, 240h is flagged. high >= H (up) and low <= H (down) give f=1.0, unc=0, touched=True. A missing price, dvol, high, low or H, or kind 'strike', each gives err. The sigma_q path and the basis passthrough are tested."
+  },
+  {
+   "ac": "A5 10,000 random inputs inside bounds(eps_tol=0) and up-touch > 2*digital; coherence_flags fires on both synthetic cases and is silent on a coherent pair",
+   "status": "pass",
+   "command": "pytest test_bounds_random, test_coherence_flags; code read of bounds/eps/coherence_flags lines 99-129",
+   "evidence": "The 10k random points all lie inside the bounds with 1e-12 slack (the upper bound equals the model algebraically). Every up-touch with H>S is >= 2*digital, and more than 90% are more than 1e-6 above it. The test also checks touch<terminal, touch>2x_digital+eps for up and down, a coherent pair returning [], the threshold edge, and an empty book. eps = eps_tol + C/H for up and eps_tol for down, as the dispatch specifies."
+  },
+  {
+   "ac": "A6 REGISTRY['touch'] state candidate; PREREG has every listed field",
+   "status": "pass",
+   "command": "pytest test_registry_and_prereg; verify.py",
+   "evidence": "state is 'candidate' and params are [eps_tol, kappa, sigma_rel_unc]. PREREG has name, hypothesis, statistic, cluster, se, alpha, pass_z, n, futility_z and futility_n (plus data and params), all non-empty. PARAMS['kappa'] is a copy of ladder KAPPA, not an alias. Both are plain module dicts, and nothing in the module writes."
+  },
+  {
+   "ac": "A7 reports/phase3_touch.md with formulas, eps finding and C(H)/H table, worked examples, smoke or 'not run', ending with 'How to reproduce'",
+   "status": "pass",
+   "command": "cat -n reports/phase3_touch.md; verify.py (recomputes table and examples); python -m trader.growth.touch --smoke",
+   "evidence": "All sections are present and the report ends with the 'How to reproduce' section, the last heading, followed by its commands. All 9 rows of the C/H table and worked examples 1-4 reproduce to the printed digits (for example ex3: kappa 0.905 unfitted, sigma_P 0.3285, f 0.0194, unc 0.0120). I re-ran the smoke at 12:13Z: 39 rows, with the same running extremes (BTC 83186/84419.7, ETH 2673.13/2722) and the same pattern of the model sitting a few points below the mid in the wings. The published numbers are consistent with that run, not made up."
+  },
+  {
+   "ac": "A8 Rules R1-R4",
+   "status": "pass",
+   "command": "ls -la --time-style=full-iso on owned files, contracts, ladder and __init__ files; sha256sum; grep -nE 'urllib|http\\.client|httpx|websockets|socket|get_json' and grep -niE 'py_clob_client|eth_account|POST|api_key|secret|os\\.environ|open\\(|write|Ledger' on both files; pytest with sockets blocked",
+   "evidence": "R1: the only WP3-A files are touch.py (14:40), test_touch.py (14:42) and phase3_touch.md (14:44). The two __init__.py files are 0 bytes from 14:21, before WP3-A started. trader/contracts.py (12:11), common.py (09-30) and ladder.py (12:26) predate Phase 3. R2: get_json appears only inside _smoke(), which runs only under `if __name__ == '__main__' and '--smoke'`, and common.get_json is an unauthenticated urllib GET. The tests pass with socket connect and getaddrinfo blocked (15 passed). R3: the grep finds no hits except a docstring mention of Ledger. There is no order, signing, credential, env or LLM code. R4: digital, kappa_for, sigma_q, KAPPA, H_MS, YEAR_H and ET are imported, not copied; call_over_h has no existing equivalent. There is one test file, and the module is 175 lines."
+  },
+  {
+   "ac": "A9 tests in tests/phase3/test_touch.py pass",
+   "status": "pass",
+   "command": ".venv\\Scripts\\python.exe -m pytest tests/phase3/test_touch.py -q",
+   "evidence": "15 passed in 15.04s. A second run with the network blocked: 15 passed in 6.00s."
+  },
+  {
+   "ac": "A10 [ops] Loop B (replay -> shadow -> canary -> token), human-signed clearances for crypto-term:<ASSET>:touch-up/:touch-down, kappa refit for tau > 24h",
+   "status": "operational_pending",
+   "command": "n/a (needs calendar time and the human's signature via tools/clearance_cli.py)",
+   "evidence": "Reported as open in the claims and in the report's gaps section. Nothing in this WP can complete it."
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "A NaN price or dvol makes touch_fair return f = 1.0 instead of err. The `not S` / `r.get('dvol')` checks let NaN through (NaN is truthy). The closed form then evaluates to NaN, and `min(1.0, nan)` in one_touch returns 1.0, a confident wrong fair. A NaN running high/low reads as untouched. I verified this with verify.py: NaN price gives 1.0, NaN dvol gives 1.0. Nothing is wired and the inputs come from JSON feeds, so this is low risk, but it goes against the 'never guesses' intent.",
+   "file": "trader/growth/touch.py",
+   "fix_hint": "In touch_fair, return {'err': ...} unless math.isfinite holds for S, H, sq and ext. Alternatively, in one_touch, return the raw value or guard the NaN before the min(1.0, ...) clamp so it does not turn into 1.0."
+  },
+  {
+   "severity": "minor",
+   "description": "coherence_flags (via eps -> call_over_h) raises ZeroDivisionError when tau_h <= 0 or sigma == 0 on an up-touch with both books two-sided. bounds() has the same problem through ladder.digital. A log-only scan run at or after the window end would crash instead of returning [].",
+   "file": "trader/growth/touch.py",
+   "fix_hint": "In coherence_flags, skip the upper check (or return []) when tau_h <= 0 or sigma <= 0. Or note in the wiring notes that callers must pass tau_h > 0."
+  }
+ ],
+ "rules_check": "R1 holds. Only the 3 owned files carry WP3-A timestamps (14:40-14:44). The two 0-byte __init__.py files (14:21) and the shared contracts, common.py and ladder.py all predate WP3-A's first file, and none of them is edited. R2 holds. Network calls (common.get_json, public GETs to Gamma, Binance and Deribit) exist only inside _smoke(), which is gated by `if __name__ == '__main__' and '--smoke' in sys.argv`. The tests import nothing network-related and pass with sockets blocked. R3 holds. There is no py_clob_client, eth_account, POST, api_key, secret, os.environ, file write, Ledger write or LLM call. The module returns floats, dicts and lists only, and never places, signs, posts or cancels anything. R4 holds. The ladder helpers are imported, not copied; there is one test file; the code is minimal (175 lines, of which the smoke is optional per the dispatch); the report ends with 'How to reproduce'. No sizes are produced, so nothing can round up. No AI output exists. There is no look-ahead: touch_fair uses only caller-supplied running extremes and the current price, and the MC is seeded. No secrets in files.",
+ "tests_rerun_output_tail": "...............                                                          [100%]\n15 passed in 15.04s\n(network-blocked rerun: 15 passed in 6.00s)",
+ "notes": "Verdict: every code-level criterion A1-A9 passes, with no blocker or major defects. Only A10 [ops] remains. I checked the math independently. one_touch matches a reflection-principle formula built separately with scipy to within 1.6e-15. A Brownian-bridge Monte Carlo, which removes the discrete-monitoring bias, agrees within 1 SE at 4 up/down settings. The report's C(H)/H table, worked examples and MC numbers reproduce exactly. A live smoke re-run (public GETs only) at 12:13Z matches the report's running extremes and pattern. Two minor robustness defects for the wiring phase: (1) a NaN price or dvol yields f = 1.0 through min(1.0, nan); (2) coherence_flags raises ZeroDivisionError at tau_h <= 0 or sigma == 0. I agree with the builder's caveat: the upper coherence check is only valid when the digital settles at the window end, so for today's monthly windows only 'touch<terminal' should be wired. My only scratch file is C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\build\\phase-3\\audit-tmp\\WP3-A\\verify.py. Relevant files: C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\growth\\touch.py, C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase3\\test_touch.py, C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase3_touch.md."
+}

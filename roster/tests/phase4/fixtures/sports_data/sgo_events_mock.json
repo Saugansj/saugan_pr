@@ -1,0 +1,119 @@
+{
+ "_note": "MOCK, shaped from SportsGameOdds v2 public docs (GET /v2/events, odds keyed by oddID {statID}-{statEntityID}-{periodID}-{betTypeID}-{sideID}, American odds per bookmaker). Not a live capture: verify against a real response when a key exists (A11 [ops]).",
+ "success": true,
+ "nextCursor": null,
+ "data": [
+  {
+   "eventID": "MOCKEV1",
+   "sportID": "SOCCER",
+   "leagueID": "EPL",
+   "teams": {
+    "home": {
+     "teamID": "ARSENAL_EPL",
+     "names": {
+      "long": "Arsenal",
+      "medium": "Arsenal",
+      "short": "ARS"
+     }
+    },
+    "away": {
+     "teamID": "LEEDS_UNITED_EPL",
+     "names": {
+      "long": "Leeds United",
+      "medium": "Leeds",
+      "short": "LEE"
+     }
+    }
+   },
+   "status": {
+    "startsAt": "2026-10-10T11:30:00.000Z",
+    "started": false,
+    "completed": false,
+    "cancelled": false
+   },
+   "odds": {
+    "points-home-reg-ml3way-home": {
+     "oddID": "points-home-reg-ml3way-home",
+     "byBookmaker": {
+      "pinnacle": {
+       "odds": "-250",
+       "available": true,
+       "lastUpdatedAt": "2026-10-09T11:00:00.000Z"
+      },
+      "draftkings": {
+       "odds": "-275",
+       "available": true,
+       "lastUpdatedAt": "2026-10-09T10:58:00.000Z"
+      }
+     }
+    },
+    "points-all-reg-ml3way-draw": {
+     "oddID": "points-all-reg-ml3way-draw",
+     "byBookmaker": {
+      "pinnacle": {
+       "odds": "+400",
+       "available": true,
+       "lastUpdatedAt": "2026-10-09T11:01:00.000Z"
+      }
+     }
+    },
+    "points-away-reg-ml3way-away": {
+     "oddID": "points-away-reg-ml3way-away",
+     "byBookmaker": {
+      "pinnacle": {
+       "odds": "+750",
+       "available": true,
+       "lastUpdatedAt": "2026-10-09T10:59:00.000Z"
+      }
+     }
+    }
+   }
+  },
+  {
+   "eventID": "MOCKEV2",
+   "sportID": "SOCCER",
+   "leagueID": "EPL",
+   "teams": {
+    "home": {
+     "names": {
+      "long": "Chelsea"
+     }
+    },
+    "away": {
+     "names": {
+      "long": "Bournemouth"
+     }
+    }
+   },
+   "status": {
+    "startsAt": "2026-10-10T14:00:00.000Z"
+   },
+   "odds": {
+    "points-home-reg-ml3way-home": {
+     "byBookmaker": {
+      "pinnacle": {
+       "odds": "-150",
+       "available": true
+      }
+     }
+    },
+    "points-all-reg-ml3way-draw": {
+     "byBookmaker": {
+      "pinnacle": {
+       "odds": "+300",
+       "available": false
+      }
+     }
+    },
+    "points-away-reg-ml3way-away": {
+     "byBookmaker": {
+      "pinnacle": {
+       "odds": "+400",
+       "available": true
+      }
+     }
+    }
+   }
+  }
+ ]
+}

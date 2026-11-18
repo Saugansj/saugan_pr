@@ -1,0 +1,64 @@
+{
+ "verdict": "PASS",
+ "ac_results": [
+  {
+   "ac": "E1 Detector: no event before the threshold is crossed; one event per cooldown; a test proves it uses no future ticks",
+   "status": "pass",
+   "command": "pytest trader/tests/test_speed.py -q -v (6 detector tests); PYTHONPATH=. python build/phase-1/audit-tmp/WP1-E/equiv56.py; PYTHONPATH=. python build/phase-1/audit-tmp/WP1-E/causal_fuzz.py; code read of MoveDetector.update (speed.py:80-98)",
+   "evidence": "All 6 detector tests pass, and the real-Binance-day test ran rather than being skipped. I re-ran the equivalence myself over all 56 BTC 1s files (2026-03-24 to 2026-05-18, 4,838,400 s): Phase 0 detect_events found 1,512 events, MoveDetector found 1,512, identical event by event, at 3.48 us per tick. This matches the builder's claim. I also wrote my own brute-force causal reference, which only looks at ticks already seen, and ran it on 6,000 irregular sub-second ticks (0-4 per second, some empty seconds): 61 events, identical to the engine's. At engine level, ticks after k replaced with a wildly different future gave identical intents before k, and different ones after k. In the code, the comparison is the current price against the close of the latest second <= sec-5, which is always a finished past second. The cooldown is sec - last_event > 60, the same as Phase 0. Out-of-order ticks are dropped."
+  },
+  {
+   "ac": "E2 Mapping: the right 5m/15m market and favoured token; markets about to end are skipped",
+   "status": "pass",
+   "command": "pytest (test_maps_to_open_5m_and_15m_and_favoured_token, test_skips_market_about_to_end_and_stale_book, test_skips_move_that_started_before_the_window, test_duration_from_real_questions); a script running duration_min over every row of data/markets/2026-09-30T170224Z.jsonl and 2026-10-01T064938Z.jsonl; causal_fuzz.py invariants",
+   "evidence": "Tests pass. On the real snapshots, every crypto-fast question parses to 5 or 15 (50+18 and 48+16 markets), and every other mode parses to None, so hourly, term and sports markets are excluded. end_time minus the parsed length equals event_start_time on every fast row (0 mismatches), and outcomes are ['Up','Down'] on all of them, which supports token_yes=Up. Fuzz over 540 events and 302 intents with rolling 5m/15m markets gave 0 violations: each traded market was open (start <= decision-5s), had more than 60 s left, and used the token matching the move's direction. Skips logged: ends too soon 135, stale book 235, move started before the window 12, among others."
+  },
+  {
+   "ac": "E3 Rule: buys only with >= 5 shares at or below the max price; never sizes above 5 shares; ETH is ignored",
+   "status": "pass",
+   "command": "pytest (test_buy_rule_size_and_max_price x4, test_never_sizes_above_five, test_eth_is_ignored); causal_fuzz.py; python -c probe of SpeedEngine({'shares': nan|0|-1|5.0000001})",
+   "evidence": "Tests pass: 4.99 shares gives no trade, an ask of 0.90 trades and 0.91 does not. Fuzz: all 302 intents were size 5.0, limit price 0.90, BUY taker, with ask <= 0.90 and ask_size >= 5. In random books with sizes 1, 4.99, 5 and 20, 340 markets were skipped for too little size and 56 for an ask above the max. shares values of nan, 0, -1 and 5.0000001 all raise ValueError (MAX_SHARES=5 hard cap). min_size > 5 is skipped, never rounded up. PARAMS assets=('BTC',), so no ETH detector is built."
+  },
+  {
+   "ac": "E4 Each trade record carries all four latency timestamps",
+   "status": "pass",
+   "command": "pytest test_trade_records_carry_four_latency_stamps; causal_fuzz.py stamp/arrival invariant; code read speed.py:133-134,164-166",
+   "evidence": "Every record in engine.trades carries binance_ms (ref ts_ms), recv_ms (ref recv_ms, else now), decision_ms (now) and arrival_ms (now + 150 + round(rtt_ms)). In the fuzz, all 302 records had all four stamps, with arrival = decision + 150 + 300 at rtt 300."
+  },
+  {
+   "ac": "E5 The pre-registration dict is complete (statistic, alpha, n, futility rule)",
+   "status": "pass",
+   "command": "pytest test_preregistration_complete; code read speed.py:42-57",
+   "evidence": "PREREG has statistic 'fee-net P&L per trade in USD held to resolution', cluster = market, cluster-robust SE, alpha 0.0228 (one-sided z=2, 1-Phi(2)=0.02275), pass_rule 'mean > 2 SE with n >= 200' (pass_z 2.0, n 200), futility 'mean < -1 SE once n >= 100' (futility_z -1, futility_n 100), and params. This matches the dispatch text."
+  },
+  {
+   "ac": "E6 Tests in trader/tests/test_speed.py pass",
+   "status": "pass",
+   "command": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\.venv\\Scripts\\python.exe -m pytest trader/tests/test_speed.py -q (from roster/)",
+   "evidence": "19 passed in 2.19s; with -rs -v, 19 passed and none skipped"
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "A reference price of zero or below makes MoveDetector.update raise ValueError ('math domain error' from math.log). Fed through SpeedEngine.on_tick, that would crash the loop iteration, not skip the tick. Probe: 6 ticks at 100.0, then price 0.0 raises ValueError.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\engines\\speed.py",
+   "fix_hint": "In on_tick, skip a ref whose price is not > 0 (one guard next to the existing None check at line 120)."
+  },
+  {
+   "severity": "minor",
+   "description": "Parameter overrides validate only 'shares'. max_price is not checked against (0, 1) or the tick grid: SpeedEngine({'max_price': 1.5}) is accepted. Kernel.check rejects price >= 1, so there is no safety impact, but an invalid registered parameter set could be pre-registered.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\engines\\speed.py",
+   "fix_hint": "Raise ValueError in __init__ unless 0 < max_price < 1, alongside the shares check."
+  },
+  {
+   "severity": "minor",
+   "description": "There is no guard against acting on a late Binance tick: if the loop falls behind, the engine still trades a move whose edge Phase 0 found gone by s+3. The builder disclosed this as an open issue. The dispatch only requires a book-staleness skip, so it is not an AC failure.",
+   "file": "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\engines\\speed.py",
+   "fix_hint": "Optional: skip when decision_ms - recv_ms exceeds a registered bound, using the local clock only, so Binance clock offset does not matter."
+  }
+ ],
+ "rules_check": "Paper only: speed.py imports only math, re, collections.deque and trader.contracts. It does no I/O and has no network, signing, key or order-sending code (grep for urllib|requests|socket|websocket|http|sign|post|key|send|subprocess|os.|eval|exec found only the dedupe 'key' variable). The engine returns Intent objects only. The builder's live smoke script is in the session scratchpad, outside the code base, and calls only public read endpoints (Binance wss trades, Gamma /events, CLOB POST /books, GET /time). Owned paths: the deliverables are only trader/engines/speed.py (12:25) and trader/tests/test_speed.py (12:19), and no WP1-E files exist elsewhere in roster. contracts.py has mtime 2026-10-01 12:11:26, earlier than every work-package file, and sha256 1c0e3f299907d5183368d0750db935e545d3c1b378545208b8f3d8e13cf768bf. Its content matches the protocol the engine implements, so there is no sign of modification. No secrets. WP1-E writes no reports, so the 'How to reproduce' rule does not apply. Phase 0 code is imported read-only (research.measure.latency.detect_events in tests). Minimal code: one 168-line module and one test file, no speculative abstractions. The contract gaps are worked around inside the package and disclosed. My scratch files are only in build/phase-1/audit-tmp/WP1-E/ (equiv56.py, causal_fuzz.py).",
+ "tests_rerun_output_tail": "...................                                                      [100%]\n19 passed in 2.19s",
+ "notes": "I checked the builder's headline numbers myself, and they hold:\n- **Detector match:** over all 56 days, Phase 0's detector and the engine both find 1,512 identical events, at about 3.5 us per tick.\n- **0.90 price cap:** in Phase 0's latency_events.parquet (BTC, ask_size >= 5), the 30 s markout is +2.6c to +2.7c in the 0.70-0.85 bands and negative above 0.85: -0.87c (0.85-0.90), -1.05c (0.90-0.95) and -0.82c (0.95-1.0). Held to resolution, every band is positive. So the cap is consistent with the data and not fabricated.\n\nIntegration notes for WP1-F (not WP1-E defects):\n- The kernel budget for btc-speed is $25. Speed trades have a worst-case cost of 0.90 x 5 = $4.50 each and are held to resolution, so only about 5 can be open at once.\n- WP1-F must put recv_ms in ref, update engine.rtt_ms from the router's measured round trip, drain engine.trades and engine.events, and pre-register the actual params if it starts the engine with overrides.\n- The live 3-minute smoke run and the round trip of 336-369 ms could not be re-verified offline. Neither is an acceptance criterion.\n\nWP1-E has no [ops] items."
+}

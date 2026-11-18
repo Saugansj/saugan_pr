@@ -1,0 +1,81 @@
+{
+ "summary": "I built WP4-B (role 19 sports fair value and role 20 sports pull rules) as two standalone, pure modules inside the owned paths. The 12 tests in tests/phase4/test_sports_fair.py pass with the socket guard on, and `python -m sports.fair devig-report` ran on the real matches.parquet (76 s) and wrote reports/phase4_devig.md. Using opening odds, the method chosen for each league is the same as Phase 0's closing-odds choice in all five leagues. Code-level ACs B1–B10 are met; B11 is [ops]. I read the shared contracts, common.py and Phase 0 / Phase 1 code but changed none of them. No network calls, no paid services, no installs.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\sports\\fair.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\sports\\pulls.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase4\\test_sports_fair.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase4_devig.md"
+ ],
+ "commands_run": [
+  ".venv\\Scripts\\python.exe -m sports.fair devig-report   (exit 0, 1m16s, wrote reports/phase4_devig.md)",
+  ".venv\\Scripts\\python.exe -m pytest tests/phase4/test_sports_fair.py -q   (12 passed)",
+  ".venv\\Scripts\\python.exe -m sports.fair bogus   (prints usage, exit 1)"
+ ],
+ "tests_passed": true,
+ "test_output_tail": "............                                                             [100%]\n12 passed in 11.34s",
+ "ac_self_check": [
+  {
+   "ac": "B1 All 7 penaltyblog methods run on a fixture 1X2, each returns a probability vector summing to 1",
+   "status": "met",
+   "evidence": "test_all_seven_methods_give_probability_vectors: len(METHODS)==7, each devig_odds() result sums to 1 within 1e-9 with every entry in (0,1); odds <= 1 or NaN return None."
+  },
+  {
+   "ac": "B2 Method choice uses training seasons only, scores against match outcomes, parameter set state 'candidate'",
+   "status": "met",
+   "evidence": "test_method_choice_uses_training_seasons_only_and_scores_against_outcomes uses a synthetic frame that has no closing columns at all. The chosen method's train_ll equals mean -ln p(FTR) recomputed by hand (rel 1e-12). Corrupting every held-out row's odds and FTR leaves the paramset (including its version hash) and all training log losses unchanged, while held_ll changes. Paramset is {name: sports-devig, version: <hash>, params: {league: method}, state: candidate}."
+  },
+  {
+   "ac": "B3 devig-report writes reports/phase4_devig.md with every listed column for E0, SP1, D1, I1, F1, ending with How to reproduce",
+   "status": "met",
+   "evidence": "The real run wrote a table with league, method, train_ll, held_ll, held_vs_multiplicative, train_n, held_n, train_seasons and phase0_closing_choice for D1, E0, F1, I1 and SP1. It has a bold note that PS* stops in January 2026, with the last PS* date per league; training log loss for all 7 methods; the registry JSON; a sigma default check; and a final 'How to reproduce' section."
+  },
+  {
+   "ac": "B4 sigma_fair non-decreasing over random ages; fair refuses with no sharp snapshot or one past max_age",
+   "status": "met",
+   "evidence": "test_sigma_fair_non_decreasing_in_age checks 2000 sorted random ages under 3 param sets. test_fair_refuses_without_a_fresh_sharp_snapshot: None, [], max_age+1, a football-data close, another event and a Kalshi record all give fair=None with reason 'no sharp reference'. Exactly max_age still works, the latest snapshot wins, and a league with no method fails closed."
+  },
+  {
+   "ac": "B5 Quote gate: none fresh refuse; one fresh outside 1 sigma refuse; all within allow; stale outlier ignored",
+   "status": "met",
+   "evidence": "test_quote_gate covers each case, plus NaN p refuses and missing fair or sigma refuses."
+  },
+  {
+   "ac": "B6 Consensus = median of per-book devigged probabilities; H, D, A fair values sum to 1",
+   "status": "met",
+   "evidence": "test_consensus_is_median_of_per_book_devig_and_fair_sums_to_one: odds-api p equals the median of the 3 books' odds_ratio devig. A superseded record and a stale book are excluded, Kalshi probs pass through as given, and per-outcome Kalshi records are handled. fair(H)+fair(D)+fair(A)=1 within 1e-9."
+  },
+  {
+   "ac": "B7 Universe checkpoints: one row per mapped market per label, untraded included, each with cluster_id and mid_ex_own",
+   "status": "met",
+   "evidence": "test_checkpoint_rows_one_per_mapped_market_traded_or_not: 5 maps give 5 rows in order. Two belong to a match with no sharp snapshot (fair None, reason recorded). mid_ex_own matches Book.mid_ex_own() with own size removed, and is None when there is no book. All rows pass a FakeLedger that requires cluster_id and allow_nan=False JSON."
+  },
+  {
+   "ac": "B8 Pull drills fire and clear; lineup pull holds until a newer sharp snapshot; resume_requires_fresh_observation pull persists past expires_ms",
+   "status": "met",
+   "evidence": "test_pull_drills_each_rule_fires_and_clears covers pre-start at start-5min, changed start, early in_progress, postponed, delayed, suspended, cancelled, missing game state, stale or missing polymarket and sports feeds, stale or missing sharp, and gate refused or missing; each case also clears. test_lineup_pull_holds_until_a_newer_sharp_snapshot: obs_ms <= lineup_ms keeps the pull, lineup+1 clears it. test_caution_pulls_and_fresh_observation_resume: a sticky pull holds past expires_ms and ends only when a later 'none' signal arrives; a plain pull ends at expiry; event_key scope works; other scopes and 'shrink' are ignored."
+  },
+  {
+   "ac": "B9 Soccer pre-registration dict has statistic, alpha, n clusters, PASS rule, futility rule and guardrail",
+   "status": "met",
+   "evidence": "test_soccer_preregistration: name soccer-maker; statistic covers markout, rebate, reward and mid_ex_own; cluster is one match; alpha 0.0228; n 100 in shadow; PASS when mean > 2 cluster-robust SE; futility (-1 SE, 50); guardrail is Brier and log loss non-inferiority with margin 0.005; the dict is JSON-serialisable."
+  },
+  {
+   "ac": "B10 pytest tests/phase4/test_sports_fair.py -q passes with the autouse socket guard",
+   "status": "met",
+   "evidence": "12 passed. The autouse fixture no_network monkeypatches socket.socket.connect to raise."
+  },
+  {
+   "ac": "B11 [ops] Soccer through Loop B (replay, shadow >= 100 clusters, canary, token); source weighting by past accuracy",
+   "status": "operational_pending",
+   "evidence": "Needs SportsGameOdds and odds-api.io keys, the running loop and calendar time. Source weighting needs ledger history; checkpoint rows already record each continuous source's p for that fit."
+  }
+ ],
+ "key_results": "**Devig choice on Pinnacle opening odds (PSH/PSD/PSA):** trained on 2012/13 to 2022/23 and held out on 2023/24, 2024/25 and 2025/26 (partial season). The choice is D1 multiplicative, E0 odds_ratio, F1 power, I1 power, SP1 odds_ratio, the same as Phase 0's closing-odds choice in every league.\n\n| League | Held-out log loss | Change vs multiplicative |\n|---|---|---|\n| D1 | 0.9592 | 0 (it is multiplicative) |\n| E0 | 0.9497 | -0.0004 |\n| F1 | 0.9794 | -0.0006 |\n| I1 | 0.9645 | -0.0008 |\n| SP1 | 0.9485 | -0.0012 |\n\n- **Registry candidate:** `sports-devig`, version `ee7d3af0e9a5` (a content hash, so re-registering identical params is a no-op).\n- **σ_fair candidate:** `sports-sigma` v1 is s0 = 0.015, k = 2e-5 per hour, max_age = 22 h, continuous sources fresh for 10 min. Pinnacle's devigged probability moves 0.023–0.027 RMS from open to close on held-out matches. That implies k between 1.1e-5 and 3.0e-5, and the default sits inside it. s0 cannot be checked from history.\n- **Rules the modules apply:**\n  - Fail-closed choices:\n    - Football-data closes are never used as the sharp source.\n    - A league with no devig method gives no fair value.\n    - NaN continuous probabilities refuse the quote.\n    - A missing feed age counts as stale.\n    - Unknown game statuses pull quotes.\n  - The latest caution signal per (role, scope) is the current one.",
+ "wiring_notes": "**Soccer maker Engine (later, Phase 1 Engine contract), per tick and per mapped market:**\n1. `f = fair.fair(mm, sgo_snapshots, devig_params, now_ms, sigma_params)`.\n2. `cs = fair.continuous_sources(mm, odds_api_kalshi_betfair_snapshots, devig_params, now_ms, sigma_params['continuous_max_age_ms'])`.\n3. `gate = fair.quote_allowed(f['fair'], f['sigma'], cs, now_ms, sigma_params['continuous_max_age_ms'])`.\n4. `reasons = pulls.pull_reasons(now_ms, mm, game_state, lineup_ms, f['obs_ms'], cautions, feed_age_ms, gate)`.\n5. If `reasons` is non-empty, return no target quotes; otherwise pass `f['fair']` and `f['sigma']` to Phase 1's quote engine (role 20) and sizer (role 23).\n6. Set `Intent.expiry_ms` to at most `pulls.maker_expiry(mm['start_ms'], market.end_ms)`.\n\nNotes for that wiring:\n- `quote_allowed` takes the per-source records from `continuous_sources`, not raw OddsSnapshots. The dispatch signature has no market or methods, so it cannot devig raw records itself.\n- `feed_age_ms` keys: `polymarket` (Phase 1's book feed) and `sports` (WP4-A's game-state feed).\n- `cautions` come from WP4-D's sentinel, in arrival order (the last signal per role and scope is the current one).\n- `lineup_ms` comes from WP4-A game state or news.\n\n**Elsewhere:**\n- **Snapshot labels:** at each label from WP4-A's `odds.due()`, the loop calls `fair.checkpoint_rows(maps, sgo, continuous, books_by_token, label, ts_ms, devig_params)` and writes each row with `Ledger.record('forecasts', row, row['ts_ms'])`.\n- **Registry (WP1-F):** register `sports-devig` (rebuild it with `fair.choose_methods(pd.read_parquet(MATCHES), held_out)[0]`, or copy the JSON in reports/phase4_devig.md) and `fair.SIGMA`; preregister `fair.SOCCER_PREREG`, which carries `name` for Ledger.preregister.\n- **Inputs:** WP4-A's OddsSnapshot, MarketMap and GameState dicts, used as-is.",
+ "open_issues": [
+  "B11 [ops]: soccer through Loop B (replay, then shadow with at least 100 clusters, then canary, then human token), live SportsGameOdds and odds-api.io keys, and source weighting by past accuracy are not done; they need keys, the running loop and ledger history.",
+  "The σ defaults (s0, k, 10-minute freshness for continuous sources) and the pull bounds in pulls.PARAMS are starting values. k is checked against Pinnacle open-to-close moves; s0 and the freshness bound are not checked against data. Loop B should refit them from checkpoint rows.",
+  "The devig choice is fitted only on history before January 2026, because football-data has no Pinnacle data after that. Its live use depends on SportsGameOdds' Pinnacle snapshots behaving like football-data's PS* odds.",
+  "Phase 0's SP1 held-out calibration slope of 1.19 (under-confident) is not corrected here; that belongs to role 21 calibration (WP4-D)."
+ ]
+}

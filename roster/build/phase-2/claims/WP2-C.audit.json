@@ -1,0 +1,94 @@
+{
+ "verdict": "PASS",
+ "ac_results": [
+  {
+   "ac": "C1 worst_case_positions: only non-terminal BUYs add; partial adds size-filled, unknown adds full size; SELLs never subtract; works on trader.router.replay of a fixture journal",
+   "status": "pass",
+   "command": "Read trader/live/risk.py:34-42; pytest tests/phase2/test_live_risk.py (test_c1_status_table x11, test_c1_replayed_journal); mutation run build/phase-2/audit-tmp/WP2-C/mutate.py unknown_partial",
+   "evidence": "Code: it adds intent.size minus (0 if the status is unknown, else filled) for status in kernel.LIVE=(journaled,open,partial,unknown) and side==BUY; it copies the positions dict and does not mutate its input (probe 9). The test table covers all 8 statuses plus SELL in open, unknown and partial. The replay test writes a JSONL file with a torn last line, runs trader.router.replay, checks every status, and gets 53 for both the dict and the list input. Mutating unknown to size-filled makes 4 tests fail."
+  },
+  {
+   "ac": "C2 stress scenarios: exactly 4 shocks x sigma*1.5 on BTC/ETH/SOL at once; strike repricing matches a hand computation within 1e-9; worst scenario is -10% for long YES and +10% for long NO",
+   "status": "pass",
+   "command": "Read risk.py:24-27,59-99; pytest test_c2_*; independent brute force build/phase-2/audit-tmp/WP2-C/probe.py (scipy.stats.norm, random 12-market portfolio over 3 assets, strike plus Up/Down, YES and NO legs); mutation no_volup",
+   "evidence": "SHOCKS=(-0.10,-0.05,0.05,0.10), VOL_UP=1.5, ASSETS=(BTC,ETH,SOL). One shock s is applied to every asset's S in the same pass, and NO loss = p1-p0. The brute force gives 19.417768650607456 at -5%, and the implementation gives 19.417768650607456 with diff 0.0. The test's joint loss equals the sum of the per-asset losses, which proves the assets are shocked together. The erf hand computation matches within 1e-9. The side test passes. Setting VOL_UP=1.0 makes 2 tests fail."
+  },
+  {
+   "ac": "C3 stress_check: rejects > 5% and approves just under with binding_cap=stress; unknown BUY flips approval; missing strike/open/sigma = total loss; NaN bankroll/price rejects; printed and non-crypto excluded",
+   "status": "pass",
+   "command": "Read risk.py:102-114; pytest test_c3_*; probe.py case 6 (exact boundary)",
+   "evidence": "room = limit*bankroll - loss. It rejects unless `room >= 0 and 0<price<1 and size>0`, a form in which NaN rejects. At exactly 5% it approves with room 0.00 (probe), which matches 'rejects if > 5%'. The 0.99x and 1.01x tests pass, and an unknown order turns the approval into a rejection. Missing strike, open, dvol or ref, tau<=0, or asset XRP each give loss == shares x 1.0. NaN bankroll, spot, dvol, price and shares all reject. Printed and sports markets are excluded."
+  },
+  {
+   "ac": "C4 resolution_check: per-market 10% and total 20% failing-input tests; held printed positions and unknown orders count; unprinted unaffected; NaN rejects",
+   "status": "pass",
+   "command": "Read risk.py:118-148; pytest test_c4_*; mutation resolution_off",
+   "evidence": "Exposure is shares x best bid, and 1.0 when there is no book or no bid. Per-market is checked before total, and the binding cap is resolution:<cid> or resolution:total. Tests: 11 x 0.95 > 10 gives resolution:p1, 20.90 > 20 gives resolution:total, held p1-n counts, an unknown order counts, no bid counts as 1.0, an unprinted intent is approved with binding_cap None, and NaN bankroll, bid or size rejects. Disabling _resolution makes 5 tests fail."
+  },
+  {
+   "ac": "C5 SevenDayDrawdown: 11% in 7 days trips global REDUCING with a privileged source; exactly 10% and an old high do not trip; after a valid reset the same equity does not re-trip but a further >10% does; reused nonce refused; rebuild from samples() gives the same decisions",
+   "status": "pass",
+   "command": "Read risk.py:171-203; pytest test_c5_*; probe.py cases 3 and 5; mutation no_rearm",
+   "evidence": "It keeps a sliding-window maximum deque with 7-day expiry and trips with kernel.trip('global', ..., 'breaker:drawdown7d', REDUCING); 'breaker' is in PRIVILEGED. The window re-arms from the trip equity. The tests use the real RiskKernel.reset with a token signed by trader.kernel.sign, check that a reused nonce is refused with 'nonce already used', and check that a JSON round trip of samples() gives identical trips. Removing the re-arm makes 2 tests fail. Defect: non-finite samples passed to the constructor are not filtered (see defects)."
+  },
+  {
+   "ac": "C6 pull_ids returns exactly the risk-increasing orders; reducing_rule refuses a taker exit without token unless group over cap and refuses a maker SELL below fair - fee",
+   "status": "pass",
+   "command": "Read risk.py:207-238; pytest test_c6_*; probe.py cases 7 and 10",
+   "evidence": "The pull fixture returns exactly ['uncovered','unk']. The covered complement BUY, the SELL, the terminal order and the out-of-scope order stay. Probe: a BUY of YES while holding YES is pulled, a covered NO BUY is kept, and SELLs are kept. reducing_rule computes the fee with trader.fees.fee(1.0, price, rate) and refuses when it raises (NaN price, None rate). The taker, SELL-below and BUY-above refusals all have tests."
+  },
+  {
+   "ac": "C7 entry-gate regression through trader.kernel.RiskKernel: REDUCING rejects risk-increasing and accepts reducing; cid lock scoped; HALTED rejects all; AI trip capped at REDUCING",
+   "status": "pass",
+   "command": "pytest test_c7_entry_gate_regression, test_c7_market_lock_is_scoped, test_c7_halted_rejects_all_and_ai_capped; Read trader/kernel.py:122-193",
+   "evidence": "All 3 tests pass against the real RiskKernel.check, including signed clearance, provenance feeds and GTD. A btc lock blocks btc only and eth is approved. An advisor:27 trip gives state REDUCING. A human trip gives HALTED, and both SELL and BUY are rejected."
+  },
+  {
+   "ac": "C8 check_live runs stress then resolution, names the binding cap, reducing intents pass through",
+   "status": "pass",
+   "command": "Read risk.py:151-167; pytest test_c8_order_binding_cap_and_reducing; probe.py cases 4b and 8; mutation no_reduce_pass",
+   "evidence": "An unknown market is rejected. _reduces calls RiskKernel.reduces, so it is the same rule as the kernel. Stress runs first, and when both caps fail the result is 'stress'. When only resolution fails the result is resolution:p1. An approval names the tightest cap by room. Reducing SELLs and complement BUYs return Decision(True,'reduces exposure'). Forcing _reduces to False makes 2 tests fail."
+  },
+  {
+   "ac": "C9 risk.py does no I/O (grep finds nothing)",
+   "status": "pass",
+   "command": "grep -nE \"open\\(|socket|urllib|httpx|sqlite3|requests\" trader/live/risk.py",
+   "evidence": "No matches (exit 1). The only imports are math, collections.deque, types.SimpleNamespace, trader.contracts, trader.engines.ladder.{digital,sigma_q}, trader.fees.fee and trader.kernel.{LIVE,RiskKernel}, all on the dispatch's stable list. There are no os or environ reads."
+  },
+  {
+   "ac": "C10 tests in tests/phase2/test_live_risk.py pass",
+   "status": "pass",
+   "command": ".venv\\Scripts\\python.exe -m pytest tests/phase2/test_live_risk.py -q ; .venv\\Scripts\\python.exe -m pytest tests/phase2 trader/tests/test_kernel.py -q",
+   "evidence": "36 passed in 0.37s. Phase2 plus the kernel tests give 199 passed in 8.60s (other WPs have added tests since the builder's 101). An autouse no-network fixture is present. Tests write only under tmp_path (journal, nonces) or use nonce_path=None."
+  }
+ ],
+ "defects": [
+  {
+   "severity": "minor",
+   "description": "Tokens absent from `markets` are skipped by stress_loss and by resolution's exposure() (disclosed in a ponytail comment and in open_issues). Phase 1 marketdata._set_markets deletes markets 6 h after end_ms (trader/marketdata.py:406-407). Once wired with ctx.markets, a held printed-but-disputed market older than 6 h therefore drops out of the 20% resolution total. Standalone resolution_check also approves an intent whose printed cid is missing from `markets` (probe 4: approved, room 10.00); check_live rejects it first with 'unknown market'.",
+   "file": "trader/live/risk.py",
+   "fix_hint": "Fail closed: in stress_loss and resolution, count shares in tokens not found in `markets` as shares x 1.0. In _resolution, reject when intent.cid is printed but missing from markets. Alternatively, have the wiring package pass held markets until they are redeemed."
+  },
+  {
+   "severity": "minor",
+   "description": "Invalid sigma or spot values are not treated as unpriceable. A negative DVOL gives sigma<0 and an inverted digital: a long-YES BTC book shows a stress gain of -0.90 instead of a loss of +4.97 (probe 2). An infinite spot gives loss 0.0. Only None, 0 and NaN fail closed. Deribit never publishes a negative DVOL, and Phase 1 fetch_dvol does not validate it.",
+   "file": "trader/live/risk.py",
+   "fix_hint": "In _yes, return None unless `S > 0 and math.isfinite(S) and sigma > 0 and math.isfinite(sigma)`. This makes the position a total loss."
+  },
+  {
+   "severity": "minor",
+   "description": "The SevenDayDrawdown constructor pushes saved samples without the finite check that on_equity applies. A NaN or inf sample in a corrupted persisted file becomes the window max, and the breaker cannot trip until it expires up to 7 days later (probe 3: NaN restored, then 100 -> 50 gives 0 trips). samples() itself never emits non-finite values.",
+   "file": "trader/live/risk.py",
+   "fix_hint": "In __init__, skip samples where `not math.isfinite(float(eq))`, the same rule as on_equity."
+  },
+  {
+   "severity": "minor",
+   "description": "The test file imports clearance_key and key_id from trader.kernel. These names are not on the dispatch's list of stable Phase 1 imports. This affects tests only and has no production effect.",
+   "file": "tests/phase2/test_live_risk.py",
+   "fix_hint": "Accept as a test-only dependency, or build the clearance key inline. The rule applies to production code first."
+  }
+ ],
+ "rules_check": "Owned paths: the builder claims only trader/live/risk.py (17:44) and tests/phase2/test_live_risk.py (17:45). Both are in the WP2-C owned paths. Other recently modified files belong to parallel WPs, and none of them is a contract or common.py. Contracts are unmodified: trader/contracts.py mtime 12:11, advisor/contracts.py 14:21 and common.py 2026-09-30 all predate the builder's files (sha256 1c0e3f29..., cd19a7dc..., e1fea022...). No real order, signing, posting, cancelling or authenticated endpoint: risk.py has no I/O, no network and no environ reads, and the C9 grep finds nothing. No LLM or paid API. No network in tests (autouse connect guard). No look-ahead: a pure function of the inputs at now_ms. No sizing or rounding and no AI inputs. No secrets: the secret grep finds nothing, and the test HMAC key 'test-human-key' is a fake. Safety comparisons are written so NaN rejects. The dispatch names no report for WP2-C, so no \"How to reproduce\" applies. Minimal code: 238 lines, pure functions and one class. It reuses RiskKernel.reduces and kernel.LIVE instead of copying them; calling reduces unbound with self=None is unusual but works, because reduces reads no instance state. No new packages were installed.",
+ "tests_rerun_output_tail": "....................................                                     [100%]\n36 passed in 0.37s\n(tests/phase2 + trader/tests/test_kernel.py: 199 passed in 8.60s)\nMutation checks (build/phase-2/audit-tmp/WP2-C/mutate.py): unknown_partial 4 failed; no_volup 2 failed; no_rearm 2 failed; no_reduce_pass 2 failed; resolution_off 5 failed. Each mutation is caught.",
+ "notes": "PASS. All 10 code-level criteria (C1-C10) pass, and WP2-C has no [ops] items. No blocker or major defect was found, only 4 minor ones (listed in defects).\n\nIndependent checks, all in scratch under build/phase-2/audit-tmp/WP2-C/:\n- probe.py re-implements the stress loss with scipy on a random 12-market BTC/ETH/SOL portfolio covering strike and Up/Down, YES and NO legs. It matches the builder's stress_loss exactly (diff 0.0).\n- mutate.py breaks 5 pieces of core logic in turn. The test suite catches every one, so the tests are not vacuous.\n\nWiring notes:\n- Phase 1 marketdata removes markets 6 h after their end time. The wiring package must keep held markets in ctx.markets until they are redeemed, or the 20% total resolution cap undercounts disputed markets.\n- SevenDayDrawdown calls kernel.trip again on each further >10% drop while already REDUCING. This is harmless, because a trip never lowers the state.\n\nHow to reproduce (from the code root):\n- `.venv\\Scripts\\python.exe -m pytest tests/phase2/test_live_risk.py -q`\n- `.venv\\Scripts\\python.exe build/phase-2/audit-tmp/WP2-C/probe.py`\n- `for m in unknown_partial no_volup no_rearm no_reduce_pass resolution_off; do .venv/Scripts/python.exe build/phase-2/audit-tmp/WP2-C/mutate.py $m; done`\n- `grep -nE \"open\\(|socket|urllib|httpx|sqlite3|requests\" trader/live/risk.py`"
+}

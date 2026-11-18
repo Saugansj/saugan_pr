@@ -1,0 +1,85 @@
+{
+ "summary": "Resumed WP4-A. The previous builder had left a nearly complete package on disk: sports/odds.py (role 11), sports/gamestate.py (role 12), 23 tests, labelled fixtures, both reports and the raw smoke data. I kept all of it and re-checked every AC against the dispatch, the contracts and the Phase 1 conventions. I found and fixed one safety defect. `gamestate.feed_age_ms` reported the `sports` feed age as the FRESHEST feed, which fails open: the Polymarket WS stays \"fresh\" on other sports' messages even if ESPN polling dies. It now follows the convention in trader/marketdata.py for \"polymarket\": `sports` is the OLDEST of the expected feeds, and it is absent until each of them has reported, so the kernel sees it as stale. The test was updated to cover this. I also added a `ponytail:` comment on Quota.take: there is no file lock between processes. I did not redo the smoke run or download any data again. The existing smoke report (2026-10-01 09:20 to 09:43 UTC) matches the raw files on disk (kalshi 149 lines, espn 25, polymarket-sports 53 frames over 68.5 s). The quota report regenerates byte-identical. 23/23 tests pass.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\sports\\gamestate.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\sports\\odds.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\phase4\\test_sports_data.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\reports\\phase4_quota.md"
+ ],
+ "commands_run": [
+  ".venv\\Scripts\\python.exe -m pytest tests/phase4/test_sports_data.py -q  (before changes: 23 passed)",
+  ".venv\\Scripts\\python.exe -m pytest tests/phase4/test_sports_data.py -q  (after changes: 23 passed)",
+  ".venv\\Scripts\\python.exe -m sports.odds quota  (regenerated reports/phase4_quota.md; diff vs previous = identical)",
+  "python inspection of data/sports/raw/polymarket-sports/2026-10-01.jsonl (53 frames, 68.5 s span, no text pings, keys gameId/leagueAbbreviation/homeTeam/awayTeam/status/score/period/live/ended)",
+  "grep for external users of sports.gamestate / feed_age_ms (only sports/pulls.py reads feed key 'sports' with a 120 s bound)"
+ ],
+ "tests_passed": true,
+ "test_output_tail": ".......................                                                  [100%]\n23 passed in 3.21s",
+ "ac_self_check": [
+  {
+   "ac": "A1 Kalshi probs = hand-computed mids; empty side -> no snapshot",
+   "status": "met",
+   "evidence": "test_kalshi_probs_equal_hand_computed_mids checks (bestYES + 1 - bestNO)/2 per outcome on a real captured event and books. test_kalshi_empty_side_gives_no_snapshot_and_legacy_cents: an emptied NO side returns None; both the legacy cents books and the orderbook_fp dollar books are covered. test_kalshi_client_uses_fetch_and_records_raw covers the injected fetch and the raw file."
+  },
+  {
+   "ac": "A2 football-data closing PSC->BFEC->AvgC; close==open missing; 2026/27 never PSC",
+   "status": "met",
+   "evidence": "test_closing_priority_and_close_equal_open_is_missing uses synthetic rows: the priority order holds, close==open on all three outcomes skips to the next family, and kickoff is converted UK time to UTC including BST. test_closing_on_real_parquet_never_psc_for_2026_27: more than 200 rows from 2026/27 and none has book=PSC; 2024/25 E0 still returns PSC more than 300 times."
+  },
+  {
+   "ac": "A3 SGO/odds-api fixtures parse; no key -> error and zero fetch; fake key not in raw lines",
+   "status": "met",
+   "evidence": "test_sgo_and_oddsapi_fixtures_parse runs on the fixtures labelled MOCK. test_no_key_means_error_and_zero_fetch_calls: the fetch raises if called, and no raw file is written. test_fake_key_never_stored_in_raw_lines: the key is sent as a header or param, and is absent from the raw lines even when the response body echoes it; error strings are scrubbed too."
+  },
+  {
+   "ac": "A4 schedule T-24h, T-3h, lineup+10m once each, not before; unknown lineup = start-60m flagged",
+   "status": "met",
+   "evidence": "test_schedule_each_label_once_at_its_time and test_schedule_unknown_lineup_assumed_and_flagged"
+  },
+  {
+   "ac": "A5 mapping: real crawler rows -> right outcome/event_key; 2h off, team mismatch, two candidates -> unmapped; rule_flags",
+   "status": "met",
+   "evidence": "test_mapping_real_rows_outcomes_event_key_and_flags runs on real crawler rows: exact cid, outcome and event_key, plus the flags postponed_open_until_completed, cancelled_resolves_no/yes and regulation_90_plus_stoppage. test_mapping_refuses_to_guess is parametrized over 2h off, team mismatch, home/away swapped and 2 candidates. test_team_names_normalize_across_sources covers name matching."
+  },
+  {
+   "ac": "A6 quota 80% routine / news to 100% / all refused at 100%; persists across instances; CLI report",
+   "status": "met",
+   "evidence": "test_quota_thresholds_and_persistence (also covers daily and monthly period resets), test_quota_cli_report and test_quota_projection_stops_at_first_overflow. reports/phase4_quota.md was regenerated by `python -m sports.odds quota`. It has all the listed columns, an Assumptions section, and ends with How to reproduce."
+  },
+  {
+   "ac": "A7 WS and ESPN fixtures parse to GameState; cancel rule fires on changed start, early in_progress, postponement, stale; not on on-time game",
+   "status": "met",
+   "evidence": "test_espn_and_ws_fixtures_parse uses the captured ESPN scoreboard, captured WS frames and soccer-shaped WS frames. test_cancel_rule_fires_and_holds covers all four triggers plus the holds: on time, within 60 s, normal in-play, 119 s old, no mapped market. test_feed_age_under_sports covers the fail-closed 'sports' aggregate."
+  },
+  {
+   "ac": "A8 early-start drill cancels only that game's orders",
+   "status": "met",
+   "evidence": "test_early_start_drill_cancels_only_that_game: on a fake Router, a0, a1, a2 and a9 (partial) are cancelled; b0-b2 (the other game) and x1 (another market) stay open; submit raises if called."
+  },
+  {
+   "ac": "A9 smoke: Kalshi markets+books, ESPN scoreboard, >=60 s Polymarket sports WS, map today's crawler rows; report with counts, mapped/unmapped, unreachable sources",
+   "status": "met",
+   "evidence": "reports/phase4_sports_smoke.md (run 2026-10-01 09:20 to 09:43 UTC): Kalshi 48 OddsSnapshot, ESPN 48 games, 75 s of WS (53 frames, none for our 5 leagues), and 144/144 sports-pregame rows of 2026-10-01T084927Z.jsonl mapped (48 events, 0 unmapped). SGO and odds-api.io are reported as not run (no keys). Raw data is under data/sports/raw/{kalshi,espn,polymarket-sports}/2026-10-01.jsonl. The run was not repeated."
+  },
+  {
+   "ac": "A10 pytest tests/phase4/test_sports_data.py passes with autouse socket guard",
+   "status": "met",
+   "evidence": "23 passed. The autouse fixture no_network monkeypatches socket.socket.connect to raise."
+  },
+  {
+   "ac": "A11 [ops] live SGO and odds-api.io with real keys; verify shapes; quota projection in Phase 1 daily report",
+   "status": "operational_pending",
+   "evidence": "No SPORTSGAMEODDS_API_KEY or ODDS_API_IO_KEY exists on this machine. The parsers are tested only on mock fixtures built from the vendors' public docs. Wiring into nightly/report.py belongs to the Phase 1 integration."
+  }
+ ],
+ "key_results": "23/23 tests pass. Code change this session: gamestate.feed_age_ms(now_ms, feeds=(\"espn\",\"polymarket-ws\")) now returns {\"sports:<feed>\": age, \"sports\": the oldest of feeds}, and leaves out \"sports\" until every feed has reported. Before, it took the freshest feed, which failed open. WP4-B's sports/pulls.py already reads the \"sports\" key with a 120 s bound, so it gets the fail-closed value. Quota projection (SportsGameOdds, 2,500/month, 3 snapshots per event): all 5 leagues are enabled; peak-month total is 30.5% of quota (E0 198, SP1 150, D1 126, I1 174, F1 114 units). Smoke run: Kalshi 48 events with full H/D/A probs; ESPN 48 games (all scheduled); WS 53 frames in 75 s with no soccer live at the time; 144/144 crawler moneyline rows mapped; 0 cancel signals.",
+ "wiring_notes": "The recorder process runs sports.odds.kalshi_snapshots(), sgo_snapshots() and oddsapi_snapshots(), all sharing one sports.odds.Quota(data/sports/quota.json); news refreshes pass priority=\"news\". For each mapped event it calls odds.due(start_ms, lineup_ms, done_labels, now) and records the returned labels in done_labels. It runs gamestate.poll_espn(league) every 30-60 s near kickoff, and runs gamestate.listen_ws(seconds, on_state) inside a reconnect loop (listen_ws raises on disconnect). OddsSnapshot and GameState dicts are appended to data/sports/. trader/marketdata.py builds sports MarketInfo from odds.map_markets(crawler_rows, espn_states + kalshi_snapshots); MarketMap.event_key is the event_group / cluster id. On every GameState update the loop calls sig = gamestate.cancel_signal(gs, maps, now), and if sig, gamestate.cancel_game(sig, paper_router, now). marketdata.feed_age_ms merges gamestate.feed_age_ms(now); pass feeds=(\"espn\",) if the WS is not run, otherwise \"sports\" never appears and the kernel treats it as stale. nightly/report.py can call odds.project_quota() and odds.Quota().used(source) for the quota section. football-data closing_odds() is for CLV only, never for quoting.",
+ "open_issues": [
+  "A11 [ops]: the SportsGameOdds and odds-api.io response shapes are mock fixtures built from public docs. Verify them against a live response once keys exist (env SPORTSGAMEODDS_API_KEY, ODDS_API_IO_KEY).",
+  "The soccer WS parser has only been tested on soccer-shaped frames. During the 75 s smoke no soccer game was live, so frames with leagueAbbreviation epl/lal/bun/sea/fl1 were never captured. Capture some during a match day and check the soccer status strings. Unknown statuses already fail closed to 'suspended'.",
+  "Kalshi kickoff is taken as occurrence_datetime minus 3h, based on what was observed on 2026-10-01. It held for 48/48 events in the smoke, but would have to change if Kalshi changes the field.",
+  "WS GameState event_key uses the receive date (the feed has no scheduled start), so a game that crosses UTC midnight would not match its MarketMap. A ponytail comment marks this.",
+  "Quota.take has no inter-process file lock (a ponytail comment marks this); one collector process should own data/sports/quota.json.",
+  "A newer crawler snapshot (2026-10-01T121820Z.jsonl) exists. The smoke mapped the earlier snapshot from the same day (08:49Z), which still meets A9's 'today's crawler rows'."
+ ]
+}

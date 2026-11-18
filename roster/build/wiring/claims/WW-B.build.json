@@ -1,0 +1,59 @@
+{
+ "summary": "WW-B is wired, and every new path is off by default. The crawler and market data now take a `features` set (the flag names from the dispatch). `touch` adds the touch templates, a horizon of up to 100 days and a running 1m high/low per window. `universe_ext` adds the SOL/XRP ladders, their Binance subscriptions and a realized sigma_Q. `sports` maps sports-pregame rows to MarketInfo through `odds.map_markets` and merges `gamestate.feed_age_ms`. A new `md.held` callable keeps a held market in `markets` past end + 6 h until its position is zero (the Phase 2 must-fix); when it is unset, markets drop at end + 6 h as before. The router gets the FillModel's fix 2 (our own orders use displayed liquidity once) behind a new constructor flag, `PaperRouter(liquidity_once=True)`. With it on, paper and strict replay produce identical fills. With no flags set, the market set, rows, subscriptions and books are byte-identical to the audited Phase 1 code. I checked this two ways: against sha256 digests captured from the unedited code on fixtures, and with a live comparison on the real shared snapshot (222 markets, identical). The full suite passes (722 tests). The live check ran only under data/trader/wiring_B/. I never opened anything under data/trader/paper14/, never wrote to the shared data/markets/, and signalled no process.\n\nHow to reproduce: from the roster folder, run `.venv\\Scripts\\python.exe -m pytest tests/wiring/test_ww_b.py trader/tests tests/invariants -q` and then the full suite: `.venv\\Scripts\\python.exe -m pytest trader/tests tests/invariants tests/phase2 tests/phase3 tests/phase4 tests/phase5 tests/wiring recorder/test_recorder.py -q`. For the live check (public GETs and WebSockets only, writes only under data/trader/wiring_B/): copy the original marketdata.py to a folder X, then run `.venv\\Scripts\\python.exe <scratchpad>\\smoke_ww_b.py X`. It writes data/trader/wiring_B/smoke.json.",
+ "files_changed": [
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\marketdata.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\trader\\router.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\recorder\\crawler.py",
+  "C:\\Users\\DELL\\Downloads\\saugan_pr\\market_updated\\roster\\tests\\wiring\\test_ww_b.py"
+ ],
+ "commands_run": [
+  ".venv\\Scripts\\python.exe (captured the B1/B5 golden digests from the unedited Phase 1 code before any edit)",
+  ".venv\\Scripts\\python.exe -m pytest tests/wiring/test_ww_b.py trader/tests tests/invariants -q",
+  ".venv\\Scripts\\python.exe -m pytest trader/tests tests/invariants tests/phase2 tests/phase3 tests/phase4 tests/phase5 tests/wiring recorder/test_recorder.py -q",
+  ".venv\\Scripts\\python.exe scratchpad/smoke_ww_b.py scratchpad/orig (live public-feed check; output only in data/trader/wiring_B/)"
+ ],
+ "tests_passed": true,
+ "test_output_tail": "tests/wiring/test_ww_b.py trader/tests tests/invariants: 147 passed in 11.96s\ntrader/tests tests/invariants tests/phase2 tests/phase3 tests/phase4 tests/phase5 tests/wiring recorder/test_recorder.py: 722 passed in 75.18s",
+ "ac_self_check": [
+  {
+   "ac": "B1 flags off: market set and books identical to before (fixture snapshot)",
+   "status": "met",
+   "evidence": "test_b1_marketdata_flags_off_unchanged hashes the markets, rows, subs, books, ref assets and feed ages built from a fixture snapshot that also contains touch/SOL/XRP rows, and compares the result to GOLD_B1, a digest captured from the unedited code. Live: new and original load_markets on the real snapshot 2026-10-07T074751Z both give 222 markets, identical."
+  },
+  {
+   "ac": "B2 held market past end+6h stays in markets until its position is zero",
+   "status": "met",
+   "evidence": "test_b2_held_market_past_end_stays_until_position_is_zero: with held=None the market drops at end + 6 h (Phase 1). With held set it stays, even after the snapshot stops listing it, and it drops once the position is 0. WW-D must set md.held = trader.positions (net of redemptions)."
+  },
+  {
+   "ac": "B3 touch and SOL/XRP rows map correctly with their flags on",
+   "status": "met",
+   "evidence": "test_b3_crawler_adds_each_template_only_with_its_flag checks that each template appears only with its own flag (SOL touch needs both). test_b3_marketdata_maps_touch_and_sol_xrp_rows checks kind, strike, event_group, source_id and window_start. Live flagged crawl: 1031 rows; BTC/ETH/SOL/XRP strike, updown, touch-up and touch-down all mapped, 0 without a source_id. 267 touch windows backfilled, and touch_fair returned a value for all 267 with no err. SOL/XRP sigma_q is about 0.47."
+  },
+  {
+   "ac": "B4 router: two own takers cannot both fill the same displayed size; existing execution tests pass",
+   "status": "met",
+   "evidence": "test_b4_own_orders_use_displayed_liquidity_once covers two takers and two makers: with liquidity_once=True, PaperRouter fills equal FillModel strict fills exactly. The test also records that the old flag-off behaviour double-fills. trader/tests/test_execution.py and tests/phase5 B4 parity pass unchanged. Caveat: the fix is behind the constructor kwarg liquidity_once (default False), because the dispatch has no flag for it. WW-D or the orchestrator must turn it on."
+  },
+  {
+   "ac": "B5 crawler changes additive: flags off gives the same snapshot rows",
+   "status": "met",
+   "evidence": "test_b5_crawler_flags_off_rows_unchanged compares candidates+build_row over the fixture Gamma events to GOLD_B5 (captured from the unedited crawler). features=() and non-crawler flags give identical rows. recorder/test_recorder.py passes."
+  },
+  {
+   "ac": "Hard rules: flags off = Phase 1; paper14 untouched; paper only; owned files only",
+   "status": "met",
+   "evidence": "Only the 4 owned files were edited. The live run wrote only data/trader/wiring_B/ (smoke.json, rtt.jsonl, markets/). The shared data/markets/ latest snapshot is still 07:47Z. Nothing under data/trader/paper14/ was opened. No process was signalled. Only unauthenticated GETs and WebSockets were used, with no orders and no keys."
+  }
+ ],
+ "key_results": "- Flags off is identical to Phase 1. The B1 and B5 digests match what the unedited code produced, and the live check on the real snapshot matched too (222 markets).\n- The live flagged crawl (touch + universe_ext) found 1031 rows across all four assets and every template. There were 267 touch windows; all were backfilled, and touch_fair gave a value for each with 0 errors. Live realized sigma_Q was about 0.47 for SOL and XRP. Feed ages included binance:SOL and binance:XRP.\n- Router: with liquidity_once=True, paper fills equal strict replay fills in the two-taker and two-maker cases.\n- New interfaces for the other packages:\n  - `md.touch_ref(ref, m)` builds the r argument for `growth.touch.touch_fair`. The per-cid windows live in `ref[asset][\"touch\"][cid] = {start_ms, high, low}`. A cid with no window is left out, so pricing fails closed.\n  - `md.window_start[cid]`.\n  - `MarketData(features=...)`, `md.held`, `md.set_sports(events)`, `md.sports_maps` and `md.sports_feeds`.\n  - `load_markets(..., features=)`, `crawler.crawl(..., features=)`, `crawler.classify(slug, features)`.\n  - `PaperRouter(..., liquidity_once=False)`.\n\nHow to reproduce: from the roster folder, run `.venv\\Scripts\\python.exe -m pytest tests/wiring/test_ww_b.py trader/tests tests/invariants -q`, then the full suite listed above. For the live part, run scratchpad/smoke_ww_b.py with the folder holding the original marketdata.py as its argument; it writes data/trader/wiring_B/smoke.json.",
+ "flag_notes": "Every flag is read from a plain set of names passed as `features` (WW-D's features.py should pass its enabled set). Nothing set means Phase 1 behaviour.\n- touch: the crawler classifies the WP3-C touch slugs with a 100-day horizon. load_markets maps them with market_info_ext. MarketData backfills each started window's high/low from Binance REST every 60 s (1m bars up to the first whole hour, then 1h bars) and extends it on every kline update. On a Binance reconnect the windows are cleared until the next backfill (fails closed). Enable with `MarketData(features={\"touch\", ...})`.\n- universe_ext: the crawler adds the solana and xrp Gamma tags and the SOL/XRP strike and Up/Down slugs. MarketData adds SOL and XRP to the Binance stream, backfills 1440 1m closes on each connect, and sets ref[a][\"sigma_q\"] with a NaN/non-finite guard (None instead). DVOL is now polled only for BTC/ETH, which is unchanged when the flag is off.\n- sports: adds the sports-pregame mode (its own Polymarket WebSocket). `md.set_sports(events)` maps rows through odds.map_markets: event_group is the event_key, kind is \"moneyline\", and the MarketMaps are in md.sports_maps. The mapping is re-applied on every 5-minute reload. feed_age_ms merges gamestate.feed_age_ms(now, md.sports_feeds). sports_feeds defaults to (\"espn\", \"polymarket-ws\"), which fails closed. Set (\"espn\",) if the sports WebSocket is not run.\n- held (not a flag): set `md.held = trader.positions` to keep held markets after end + 6 h. When it is None, markets drop at end + 6 h as in Phase 1. Recommended under live_risk, or always.\n- liquidity_once (a PaperRouter kwarg, not a dispatch flag): `PaperRouter(markets, rtt, journal=..., liquidity_once=True)`. It defaults to False so that flags-off and the paper14 run on restart stay exactly the audited simulator.",
+ "open_issues": [
+  "The router fix has no dispatch flag. I put it behind PaperRouter(liquidity_once=False). WW-D or the orchestrator has to choose: tie it to a flag (for example in the paper-safe set), or flip the default once the paper14 run ends. Until then paper and replay agree only when it is on.",
+  "WW-D needs to wire: features into MarketData(features=...); md.held = self.positions; md.set_sports(espn_states + kalshi_snapshots); md.sports_feeds. WW-D should also note that the loop's MD subclass drops 'untraded' markets, which may remove touch, SOL/XRP and sports markets before engines see them.",
+  "For WW-C: price touch markets with touch_fair(m, md.touch_ref(ref, m), now, params). The windows sit per cid in ref[asset]['touch']. SOL/XRP use ref[a]['sigma_q'] because there is no DVOL.",
+  "When touch or universe_ext is on, load_markets crawls again whenever the latest shared snapshot has no rows of a flagged template. The recorder's hourly flags-off crawl causes this. The flagged crawl took 254 s live. It runs in a thread on the 5-minute reload, but it blocks MarketData start-up. It writes into the shared data/markets/. Extra rows there leave a flags-off reader's market set unchanged (B1 test), but WW-D smokes may prefer their own markets_dir.",
+  "Sports MarketInfo has source_id '' and kind 'moneyline'. WW-A's sports-maker kernel entry has to accept this or define a source; otherwise the kernel's provenance check refuses the market (fails closed).",
+  "The phase-3 'barrier parse accepts $91k as 91' defect is not guarded here. I did not see it in live data: all touch questions parsed to full dollar strikes."
+ ]
+}
